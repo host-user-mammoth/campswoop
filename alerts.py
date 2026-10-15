@@ -20,7 +20,7 @@ Usage:
   python alerts.py --test-email   # send a sample confirmation and alert to the alerts Gmail itself
 
 Environment (repo secrets):
-  GMAIL_ADDRESS         the Gmail account alerts@campswoop.com forwards to; never shown to anyone
+  GMAIL_ADDRESS         the Gmail account alerts@campswoop.com forwards to; alerts are sent from it
   GMAIL_APP_PASSWORD    an App Password for that account
 """
 
