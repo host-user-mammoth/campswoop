@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CampSwoop</title>
+<meta name="description" content="Booked solid? CampSwoop emails you the moment a campsite opens for your dates. Free.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⛺</text></svg>">
+<style>
+  :root {
+    --bg: #f6f4ee;
+    --surface: #ffffff;
+    --surface-2: #eef1ea;
+    --text: #1d2a20;
+    --muted: #5b6b5e;
+    --line: #d9ded5;
+    --accent: #2f6b3a;
+    --accent-text: #ffffff;
+    --accent-soft: #e2efe2;
+    --warn: #8a4b0f;
+    --warn-soft: #fbefdf;
+    --focus: #3d8bfd;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111612; --surface: #1a211c; --surface-2: #222b24; --text: #e5ebe4; --muted: #9fb0a2;
+      --line: #313d34; --accent: #7cc489; --accent-text: #0f1a11; --accent-soft: #1f3324;
+      --warn: #f2b56b; --warn-soft: #33281a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111612; --surface: #1a211c; --surface-2: #222b24; --text: #e5ebe4; --muted: #9fb0a2;
+    --line: #313d34; --accent: #7cc489; --accent-text: #0f1a11; --accent-soft: #1f3324;
+    --warn: #f2b56b; --warn-soft: #33281a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 620px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 2rem; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  .lede { color: var(--muted); margin: 0 0 24px; font-size: 1.05rem; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .step + .step { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .step-title { display: flex; align-items: baseline; gap: 10px; font-weight: 650; margin-bottom: 10px; }
+  .num {
+    display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); font-size: 0.8rem; font-weight: 700; flex: none;
+  }
+  .optional { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
+  label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
+  input[type="text"], input[type="search"], input[type="date"], input[type="number"] {
+    width: 100%; font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 44px;
+  }
+  input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .hint { color: var(--muted); font-size: 0.9rem; margin: 8px 0 0; }
+  .results { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .results:empty { display: none; }
+  .results li + li { border-top: 1px solid var(--line); }
+  .results button {
+    display: block; width: 100%; text-align: left; font: inherit; color: var(--text);
+    background: var(--surface); border: 0; padding: 10px 12px; cursor: pointer; min-height: 44px;
+  }
+  .results button:hover { background: var(--surface-2); }
+  .results button:disabled { cursor: default; color: var(--muted); }
+  .results small { display: block; color: var(--muted); }
+  .chosen {
+    display: flex; gap: 12px; align-items: flex-start; justify-content: space-between;
+    background: var(--accent-soft); border-radius: 8px; padding: 12px; margin-top: 8px;
+  }
+  .chosen strong { display: block; }
+  .chosen small { color: var(--muted); }
+  .link-button { font: inherit; background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; padding: 0; }
+  .notice { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 0.95rem; }
+  .notice a { color: inherit; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips label {
+    margin: 0; color: var(--text); font-size: 0.95rem; border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 14px; cursor: pointer; min-height: 40px; display: inline-flex; align-items: center;
+  }
+  .chips input { position: absolute; opacity: 0; pointer-events: none; }
+  .chips input:checked + span { font-weight: 650; }
+  .chips label:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+  .chips label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .length { margin-top: 12px; max-width: 200px; }
+  .actions { display: grid; gap: 10px; margin-top: 4px; }
+  .primary, .secondary {
+    display: block; width: 100%; text-align: center; font: inherit; font-weight: 650; border-radius: 10px;
+    padding: 13px 16px; min-height: 48px; cursor: pointer; text-decoration: none;
+  }
+  .primary { background: var(--accent); color: var(--accent-text); border: 0; }
+  .secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .primary[aria-disabled="true"], .secondary[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+  .summary { background: var(--surface-2); border-radius: 8px; padding: 12px; font-size: 0.95rem; margin-bottom: 12px; }
+  .copy-box { margin-top: 12px; }
+  .copy-box pre {
+    white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border-radius: 8px;
+    padding: 12px; font-size: 0.85rem; margin: 6px 0 0;
+  }
+  .copy-line { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .copy-line code { font-size: 0.95rem; word-break: break-all; }
+  section.info { margin-top: 32px; }
+  .steps { margin: 0; padding-left: 20px; }
+  .steps li { margin-bottom: 6px; }
+  details { border-top: 1px solid var(--line); padding: 12px 0; }
+  details:last-of-type { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin: 8px 0 0; color: var(--muted); }
+  footer { margin-top: 32px; color: var(--muted); font-size: 0.85rem; }
+  [hidden] { display: none !important; }
+  @media (max-width: 420px) { .row { grid-template-columns: 1fr; } h1 { font-size: 1.7rem; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>CampSwoop</h1>
+  <p class="lede">Booked solid? Get an email the moment a site opens for your dates. Free; all you need is a campground and your dates.</p>
+
+  <form class="card" id="form" novalidate>
+    <div class="step">
+      <div class="step-title"><span class="num">1</span> Which campground?</div>
+      <div id="pick">
+        <label for="q">Search by name, or paste a booking link</label>
+        <input type="search" id="q" autocomplete="off" placeholder="e.g. Upper Pines, or a booking link" aria-describedby="q-hint" aria-controls="results">
+        <ul class="results" id="results" aria-live="polite"></ul>
+        <p class="hint" id="q-hint">Search covers Recreation.gov (US national parks and forests). For state, provincial or private campgrounds, paste the booking link.</p>
+        <div id="q-notice" class="notice" hidden></div>
+      </div>
+      <div id="chosen" class="chosen" hidden>
+        <div><strong id="chosen-name"></strong><small id="chosen-detail"></small></div>
+        <button type="button" class="link-button" id="change">Change</button>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="num">2</span> When?</div>
+      <div class="row">
+        <div><label for="in">Check in</label><input type="date" id="in"></div>
+        <div><label for="out">Check out</label><input type="date" id="out"></div>
+      </div>
+      <p class="hint" id="nights">You'll get an alert only when one site is free for every night.</p>
+      <div id="date-notice" class="notice" hidden></div>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="num">3</span> Camping in <span class="optional">(optional)</span></div>
+      <div class="chips" role="radiogroup" aria-label="Camping in">
+        <label><input type="radio" name="camping" value="any" checked><span>Any site</span></label>
+        <label><input type="radio" name="camping" value="tent"><span>Tent</span></label>
+        <label><input type="radio" name="camping" value="trailer"><span>Trailer</span></label>
+        <label><input type="radio" name="camping" value="motorhome"><span>Motorhome or van</span></label>
+      </div>
+      <div class="length" id="length-wrap" hidden>
+        <label for="length">Length in feet</label>
+        <input type="number" id="length" min="8" max="60" inputmode="numeric" placeholder="e.g. 25">
+      </div>
+      <p class="hint" id="camping-note" hidden>This booking site doesn't say which sites fit a tent or RV, so you'll hear about any open site.</p>
+    </div>
+
+    <div class="step">
+      <div class="step-title"><span class="num">4</span> Sign up with your email</div>
+      <div class="summary" id="summary">Pick a campground and dates first.</div>
+      <div class="actions">
+        <a class="primary" id="mailto" aria-disabled="true" href="#">Open my email app</a>
+        <a class="secondary" id="gmail" aria-disabled="true" href="#" target="_blank" rel="noopener">Use Gmail in the browser</a>
+        <button type="button" class="link-button" id="show-copy" disabled>Or copy the email and send it yourself</button>
+      </div>
+      <p class="hint">Your email opens with everything filled in. Just tap <b>Send</b>. You'll get a reply within about 5 minutes confirming your watch.</p>
+      <div class="copy-box" id="copy-box" hidden>
+        <div class="copy-line"><span>To: <code id="copy-to"></code></span><button type="button" class="link-button" data-copy="copy-to">Copy</button></div>
+        <div class="copy-line"><span>Subject: <code id="copy-subject"></code></span><button type="button" class="link-button" data-copy="copy-subject">Copy</button></div>
+        <div class="copy-line"><span>Message:</span><button type="button" class="link-button" data-copy="copy-body">Copy</button></div>
+        <pre id="copy-body"></pre>
+      </div>
+    </div>
+  </form>
+
+  <section class="info">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>You send one email (the form above writes it). Your email address is your sign-up; there's no account or password.</li>
+      <li>We check the campground every 5 minutes for cancellations.</li>
+      <li>The moment a site is free for every night of your stay, you get an email with a link straight to that site. Book fast; open sites go quickly.</li>
+    </ol>
+  </section>
+
+  <section class="info">
+    <h2>Questions</h2>
+    <details>
+      <summary>Which campgrounds can it watch?</summary>
+      <p><span id="supported">Recreation.gov (US national parks, national forests, Army Corps lakes); Parks Canada, BC Parks, Ontario Parks and Washington State Parks; and private campgrounds that book through Firefly Reservations.</span> Paste a link from another booking site and the reply will tell you if it's not supported yet.</p>
+    </details>
+    <details>
+      <summary>What about a music festival or a big game?</summary>
+      <p>Pick a campground near the event and use the event dates. Festival camping passes sold as tickets can't be watched here. Going with friends? Fill in the form, then use <b>Share these dates</b> to send them a link with everything filled in.</p>
+      <p><button type="button" class="link-button" id="share" disabled>Share these dates</button> <span id="share-done" class="optional" hidden>Link copied.</span></p>
+    </details>
+    <details>
+      <summary>How do I stop alerts?</summary>
+      <p>Reply "stop" to any email from us. Reply "list" to see what you're watching. Each person can watch up to 3 stays at once, up to about a year ahead.</p>
+    </details>
+    <details>
+      <summary>Is my email shared?</summary>
+      <p>No. Your address is used only to send your alerts and is never shown to anyone else.</p>
+    </details>
+    <details>
+      <summary>Does it cost anything?</summary>
+      <p>No. You still book and pay the campground directly.</p>
+    </details>
+  </section>
+
+  <footer>CampSwoop is not affiliated with Recreation.gov, Parks Canada, any state or provincial park system, Firefly Reservations or any campground. Availability can change between our check and your booking.</footer>
+</main>
+
+<script>
+// Sign-ups go here; Cloudflare Email Routing forwards it to the Gmail inbox alerts.py reads.
+const ALERTS_EMAIL = "alerts@campswoop.com";
+const RECGOV_SEARCH = "https://www.recreation.gov/api/search";
+const MAX_NIGHTS = 14;
+
+// Booking links alerts.py can watch. Keep in sync with SOURCES in alerts.py.
+const SOURCES = [
+  { title: "Recreation.gov", pattern: /recreation\.gov\/camping\/(campgrounds|campsites)\/(\d+)/i,
+    url: m => `https://www.recreation.gov/camping/${m[1].toLowerCase()}/${m[2]}` },
+  { title: "Firefly Reservations", pattern: /fireflyreservations\.com\/reserve\/property\/([A-Za-z0-9_-]+)/i,
+    url: m => `https://app.fireflyreservations.com/reserve/property/${m[1]}`,
+    name: m => m[1].replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_]+/g, " ") },
+  { title: "Parks Canada, BC, Ontario and Washington parks", noFilter: true,
+    pattern: /https?:\/\/((?:[\w-]+\.)*(?:goingtocamp\.com|pc\.gc\.ca|bcparks\.ca|ontarioparks\.ca))\/\S*?[?&]resourceLocationId=-?\d+\S*/i,
+    url: m => m[0], name: m => `${CAMIS_SITES[m[1].toLowerCase()] || "GoingToCamp"} campground` },
+];
+const CAMIS_SITES = { "reservation.pc.gc.ca": "Parks Canada", "camping.bcparks.ca": "BC Parks",
+                      "reservations.ontarioparks.ca": "Ontario Parks", "washington.goingtocamp.com": "Washington State Parks" };
+
+const $ = id => document.getElementById(id);
+const state = { place: null }; // { name, detail, url }
+const monthDay = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const dayName = d => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+const parseDate = s => (s ? new Date(s + "T00:00:00Z") : null);
+const iso = d => d.toISOString().slice(0, 10);
+const addDays = (d, n) => new Date(d.getTime() + n * 86400000);
+const localToday = () => { const n = new Date(); return parseDate(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`); };
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// --- Step 1: campground ---
+let searchTimer, searchSeq = 0;
+$("q").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const q = $("q").value.trim();
+  $("q-notice").hidden = true;
+  if (/^https?:\/\/|\.(com|gov|org|ca|net)\//i.test(q)) return useLink(q);
+  if (q.length < 3) { $("results").innerHTML = ""; return; }
+  searchTimer = setTimeout(() => search(q), 300);
+});
+
+function useLink(text) {
+  $("results").innerHTML = "";
+  for (const source of SOURCES) {
+    const m = text.match(source.pattern);
+    if (m) return choose({ name: source.name ? source.name(m) : "Recreation.gov campground", detail: source.title, url: source.url(m),
+                           lookup: !source.name, noFilter: !!source.noFilter });
+  }
+  let host = "";
+  try { host = new URL(/^https?:/i.test(text) ? text : "https://" + text).hostname.replace(/^www\./, ""); } catch (e) {}
+  if (/(goingtocamp\.com|pc\.gc\.ca|bcparks\.ca|ontarioparks\.ca)$/i.test(host)) {
+    return notice($("q-notice"), "That link doesn't say which park. Open the park on that site, search any dates, and paste the link from the results page.");
+  }
+  notice($("q-notice"), `We can't watch ${escapeHtml(host || "that booking site")} yet. Supported: ${SOURCES.map(s => s.title).join(", ")}.`);
+}
+
+async function search(q) {
+  const seq = ++searchSeq;
+  try {
+    const params = new URLSearchParams({ q, fq: "entity_type:campground", size: "8" });
+    const response = await fetch(`${RECGOV_SEARCH}?${params}`);
+    const data = await response.json();
+    if (seq !== searchSeq) return;
+    const results = data.results || [];
+    $("results").innerHTML = results.map((r, i) => {
+      const where = [r.parent_name, r.addresses?.[0]?.state_code || r.state_code].filter(Boolean).join(", ");
+      const note = r.reservable === false ? " · first come, first served (can't be booked online)" : "";
+      return `<li><button type="button" data-i="${i}" ${r.reservable === false ? "disabled" : ""}>${escapeHtml(r.name)}<small>${escapeHtml(where + note)}</small></button></li>`;
+    }).join("");
+    $("results").querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
+      const r = results[button.dataset.i];
+      choose({ name: r.name, detail: [r.parent_name, r.addresses?.[0]?.state_code].filter(Boolean).join(", ") + " · Recreation.gov",
+               url: `https://www.recreation.gov/camping/campgrounds/${r.entity_id}` });
+    }));
+    if (!results.length) {
+      const find = `https://www.google.com/search?q=${encodeURIComponent(q + " campground reservations")}`;
+      notice($("q-notice"), `Not on Recreation.gov. <a href="${find}" target="_blank" rel="noopener">Find its booking page</a>, then paste the link here.`);
+    }
+  } catch (e) {
+    if (seq === searchSeq) notice($("q-notice"), "Search isn't working right now. Paste the campground's booking link instead.");
+  }
+}
+
+async function lookupRecgov(url) {
+  const id = url.match(/campgrounds\/(\d+)/);
+  if (!id) return;
+  try {
+    const params = new URLSearchParams({ fq: `entity_id:${id[1]}`, size: "1" });
+    const r = (await (await fetch(`${RECGOV_SEARCH}?${params}`)).json()).results?.[0];
+    if (r && state.place?.url === url) {
+      state.place.name = r.name;
+      state.place.detail = [r.parent_name, r.addresses?.[0]?.state_code].filter(Boolean).join(", ") + " · Recreation.gov";
+      showChosen(); update();
+    }
+  } catch (e) { /* the name is only for display; alerts.py looks it up itself */ }
+}
+
+function choose(place) {
+  state.place = place;
+  showChosen();
+  if (place.lookup) lookupRecgov(place.url);
+  update();
+}
+
+function showChosen() {
+  $("pick").hidden = !!state.place;
+  $("chosen").hidden = !state.place;
+  if (state.place) { $("chosen-name").textContent = state.place.name; $("chosen-detail").textContent = state.place.detail; }
+}
+
+$("change").addEventListener("click", () => { state.place = null; showChosen(); $("q").value = ""; $("results").innerHTML = ""; $("q").focus(); update(); });
+
+function notice(el, htmlText) { el.innerHTML = htmlText; el.hidden = false; }
+
+// --- Step 2: dates ---
+const today = localToday();
+$("in").min = iso(today);
+$("in").max = iso(addDays(today, 395));
+$("in").addEventListener("change", () => {
+  const start = parseDate($("in").value);
+  const end = parseDate($("out").value);
+  if (start) {
+    $("out").min = iso(addDays(start, 1));
+    if (!end || end <= start || (end - start) / 86400000 > MAX_NIGHTS) $("out").value = iso(addDays(start, 2));
+  }
+  update();
+});
+$("out").addEventListener("change", update);
+
+function stay() {
+  const start = parseDate($("in").value), end = parseDate($("out").value);
+  if (!start || !end) return { error: "" };
+  const nights = Math.round((end - start) / 86400000);
+  if (start < today) return { error: "Check-in has already passed." };
+  if (nights < 1) return { error: "Check-out must be after check-in." };
+  if (nights > MAX_NIGHTS) return { error: `Stays can be up to ${MAX_NIGHTS} nights.` };
+  if ((start - today) / 86400000 > 395) return { error: "We can watch dates up to about a year ahead." };
+  return { start, end, nights };
+}
+
+// --- Step 3: camping in ---
+document.querySelectorAll('input[name="camping"]').forEach(radio => radio.addEventListener("change", () => {
+  $("length-wrap").hidden = !["trailer", "motorhome"].includes(camping());
+  update();
+}));
+$("length").addEventListener("input", update);
+const camping = () => document.querySelector('input[name="camping"]:checked').value;
+
+function campingText() {
+  const kind = camping();
+  const length = parseInt($("length").value, 10);
+  const name = { any: "any site", tent: "tent", trailer: "trailer", motorhome: "motorhome or van" }[kind];
+  return name + (["trailer", "motorhome"].includes(kind) && length > 0 ? `, ${length} ft` : "");
+}
+
+// --- Step 4: the email ---
+function composeEmail() {
+  const s = stay();
+  if (!state.place || !s.start) return null;
+  const range = s.start.getUTCMonth() === s.end.getUTCMonth()
+    ? `${monthDay(s.start)}–${s.end.getUTCDate()}` : `${monthDay(s.start)}–${monthDay(s.end)}`;
+  const subject = `Watch: ${state.place.name}, ${range}, ${s.end.getUTCFullYear()}`;
+  const body = [
+    "Please watch this campground and email me when a site opens for my whole stay.",
+    "",
+    `Campground: ${state.place.name}`,
+    `Link: ${state.place.url}`,
+    `Check in: ${iso(s.start)}`,
+    `Check out: ${iso(s.end)}`,
+    `Camping in: ${campingText()}`,
+    "",
+    "(Just tap Send. To stop alerts later, reply \"stop\".)",
+  ].join("\n");
+  return { subject, body, s };
+}
+
+function update() {
+  const s = stay();
+  $("date-notice").hidden = !s.error;
+  if (s.error) $("date-notice").textContent = s.error;
+  if (s.start) $("nights").textContent = `${s.nights} night${s.nights === 1 ? "" : "s"}: ${dayName(s.start)} → ${dayName(s.end)}. You'll get an alert only when one site is free for every night.`;
+
+  $("camping-note").hidden = !state.place?.noFilter;
+  const mail = composeEmail();
+  const ready = !!mail;
+  for (const id of ["mailto", "gmail"]) $(id).setAttribute("aria-disabled", String(!ready));
+  $("show-copy").disabled = !ready;
+  $("share").disabled = !mail;
+  if (!mail) {
+    $("summary").textContent = "Pick a campground and dates first.";
+    $("copy-box").hidden = true;
+    return;
+  }
+  $("summary").innerHTML = `<b>${escapeHtml(state.place.name)}</b><br>${escapeHtml(dayName(mail.s.start))} → ${escapeHtml(dayName(mail.s.end))} · ${escapeHtml(campingText())}`;
+  const q = s => encodeURIComponent(s);
+  $("mailto").href = `mailto:${ALERTS_EMAIL}?subject=${q(mail.subject)}&body=${q(mail.body)}`;
+  $("gmail").href = `https://mail.google.com/mail/?view=cm&fs=1&to=${q(ALERTS_EMAIL)}&su=${q(mail.subject)}&body=${q(mail.body)}`;
+  $("copy-to").textContent = ALERTS_EMAIL;
+  $("copy-subject").textContent = mail.subject;
+  $("copy-body").textContent = mail.body;
+}
+
+$("show-copy").addEventListener("click", () => { $("copy-box").hidden = false; });
+document.querySelectorAll("[data-copy]").forEach(button => button.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($(button.dataset.copy).textContent); button.textContent = "Copied"; }
+  catch (e) { button.textContent = "Select and copy it"; }
+  setTimeout(() => { button.textContent = "Copy"; }, 2000);
+}));
+
+// --- Shareable links: ?link=<booking link>&in=YYYY-MM-DD&out=YYYY-MM-DD&camping=trailer&length=25 ---
+$("share").addEventListener("click", async () => {
+  const params = new URLSearchParams({ link: state.place.url, in: $("in").value, out: $("out").value });
+  if (camping() !== "any") params.set("camping", camping());
+  if ($("length").value && !$("length-wrap").hidden) params.set("length", $("length").value);
+  const url = `${location.origin}${location.pathname}?${params}`;
+  try {
+    if (navigator.share) await navigator.share({ title: "CampSwoop", url });
+    else { await navigator.clipboard.writeText(url); $("share-done").hidden = false; }
+  } catch (e) { /* cancelled */ }
+});
+
+(function prefill() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("link")) useLink(params.get("link"));
+  if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("in") || "")) { $("in").value = params.get("in"); $("in").dispatchEvent(new Event("change")); }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(params.get("out") || "")) $("out").value = params.get("out");
+  const kind = document.querySelector(`input[name="camping"][value="${CSS.escape(params.get("camping") || "any")}"]`);
+  if (kind) { kind.checked = true; kind.dispatchEvent(new Event("change")); }
+  if (/^\d{1,2}$/.test(params.get("length") || "")) $("length").value = params.get("length");
+  update();
+})();
+</script>
+</body>
+</html>

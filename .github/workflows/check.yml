@@ -1,0 +1,75 @@
+name: CampSwoop
+
+# Answers sign-up emails and checks every watched campground every 5 minutes. GitHub's own schedule
+# fires unreliably, so each run checks 12 times, 5 minutes apart, then starts the next run itself.
+# The schedule below is only a backup that restarts the chain if it ever breaks.
+# To stop: gh workflow disable check.yml -R host-user-mammoth/campswoop
+on:
+  schedule:
+    - cron: "*/30 * * * *" # backup only
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [check, test-email]
+        default: check
+
+permissions:
+  contents: write # commit state.json
+  actions: write # lets a run start the next one
+
+concurrency:
+  # One check run at a time; a newer queued run replaces an older queued one.
+  group: campswoop-${{ inputs.action || 'check' }}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+    steps:
+      - name: Check setup
+        id: setup
+        run: |
+          if [ -n "$GMAIL_ADDRESS" ] && [ -n "$GMAIL_APP_PASSWORD" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::GMAIL_ADDRESS and GMAIL_APP_PASSWORD aren't set yet, so there's nothing to do. See README.md."
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.setup.outputs.ready
+
+      - name: Send sample emails to the Gmail account
+        if: steps.setup.outputs.ready && inputs.action == 'test-email'
+        run: python3 alerts.py --test-email
+
+      - name: Check every 5 minutes for an hour
+        if: steps.setup.outputs.ready && (inputs.action || 'check') == 'check'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          failed=0
+          for i in $(seq 12); do
+            git pull -q --rebase # pick up edits pushed since the run started
+            echo "::group::Check $i of 12 at $(TZ=America/New_York date '+%-I:%M %p ET')"
+            python3 alerts.py || failed=1
+            if [ -n "$(git status --porcelain -- state.json)" ]; then
+              git add state.json
+              git commit -q -m "Update availability"
+              git pull -q --rebase
+              git push -q
+            fi
+            echo "::endgroup::"
+            if [ "$i" -lt 12 ]; then sleep 300; fi
+          done
+          exit $failed
+
+      - name: Start the next run
+        if: "!cancelled() && steps.setup.outputs.ready && (inputs.action || 'check') == 'check'"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run check.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f action=check
