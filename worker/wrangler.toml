@@ -1,0 +1,18 @@
+# CampSwoop API: deploy with `npx wrangler deploy` from this folder.
+# Secrets (set with `npx wrangler secret put NAME`): RESEND_API_KEY, API_TOKEN.
+name = "campswoop-api"
+main = "src/index.js"
+compatibility_date = "2026-09-15"
+workers_dev = false
+routes = [{ pattern = "api.campswoop.com", custom_domain = true }]
+
+[vars]
+SITE = "https://campswoop.com"
+API_URL = "https://api.campswoop.com"
+FROM = "CampSwoop <alerts@campswoop.com>"
+REPLY_TO = "alerts@campswoop.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "campswoop"
+database_id = "REPLACE_AFTER_D1_CREATE"

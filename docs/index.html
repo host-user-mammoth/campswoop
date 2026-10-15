@@ -52,7 +52,7 @@
   }
   .optional { color: var(--muted); font-weight: 400; font-size: 0.9rem; }
   label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
-  input[type="text"], input[type="search"], input[type="date"], input[type="number"] {
+  input[type="text"], input[type="search"], input[type="date"], input[type="number"], input[type="email"] {
     width: 100%; font: inherit; color: var(--text); background: var(--surface);
     border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 44px;
   }
@@ -88,22 +88,17 @@
   .chips label:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
   .chips label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
   .length { margin-top: 12px; max-width: 200px; }
-  .actions { display: grid; gap: 10px; margin-top: 4px; }
-  .primary, .secondary {
-    display: block; width: 100%; text-align: center; font: inherit; font-weight: 650; border-radius: 10px;
-    padding: 13px 16px; min-height: 48px; cursor: pointer; text-decoration: none;
+  .primary {
+    display: block; width: 100%; margin-top: 12px; text-align: center; font: inherit; font-weight: 650;
+    border-radius: 10px; padding: 13px 16px; min-height: 48px; cursor: pointer;
+    background: var(--accent); color: var(--accent-text); border: 0;
   }
-  .primary { background: var(--accent); color: var(--accent-text); border: 0; }
-  .secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-  .primary[aria-disabled="true"], .secondary[aria-disabled="true"] { opacity: 0.45; pointer-events: none; }
+  .primary:disabled { opacity: 0.45; cursor: default; }
   .summary { background: var(--surface-2); border-radius: 8px; padding: 12px; font-size: 0.95rem; margin-bottom: 12px; }
-  .copy-box { margin-top: 12px; }
-  .copy-box pre {
-    white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border-radius: 8px;
-    padding: 12px; font-size: 0.85rem; margin: 6px 0 0;
-  }
-  .copy-line { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 10px; }
-  .copy-line code { font-size: 0.95rem; word-break: break-all; }
+  .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+  .result { border-radius: 8px; padding: 12px; margin-top: 12px; }
+  .result.ok { background: var(--accent-soft); }
+  .result.error { background: var(--warn-soft); color: var(--warn); }
   section.info { margin-top: 32px; }
   .steps { margin: 0; padding-left: 20px; }
   .steps li { margin-bottom: 6px; }
@@ -163,27 +158,21 @@
     </div>
 
     <div class="step">
-      <div class="step-title"><span class="num">4</span> Sign up with your email</div>
+      <div class="step-title"><span class="num">4</span> Where should we email you?</div>
       <div class="summary" id="summary">Pick a campground and dates first.</div>
-      <div class="actions">
-        <a class="primary" id="mailto" aria-disabled="true" href="#">Open my email app</a>
-        <a class="secondary" id="gmail" aria-disabled="true" href="#" target="_blank" rel="noopener">Use Gmail in the browser</a>
-        <button type="button" class="link-button" id="show-copy" disabled>Or copy the email and send it yourself</button>
-      </div>
-      <p class="hint">Your email opens with everything filled in. Just tap <b>Send</b>. You'll get a reply within about 5 minutes confirming your watch.</p>
-      <div class="copy-box" id="copy-box" hidden>
-        <div class="copy-line"><span>To: <code id="copy-to"></code></span><button type="button" class="link-button" data-copy="copy-to">Copy</button></div>
-        <div class="copy-line"><span>Subject: <code id="copy-subject"></code></span><button type="button" class="link-button" data-copy="copy-subject">Copy</button></div>
-        <div class="copy-line"><span>Message:</span><button type="button" class="link-button" data-copy="copy-body">Copy</button></div>
-        <pre id="copy-body"></pre>
-      </div>
+      <label for="email">Your email</label>
+      <input type="email" id="email" autocomplete="email" inputmode="email" placeholder="you@example.com">
+      <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input type="text" id="website" tabindex="-1" autocomplete="off"></div>
+      <button type="submit" class="primary" id="signup-button" disabled>Get alerts</button>
+      <p class="hint">We'll email you a link to confirm. Alerts come from <b>alerts@campswoop.com</b>.</p>
+      <div id="result" class="result" role="status" hidden></div>
     </div>
   </form>
 
   <section class="info">
     <h2>How it works</h2>
     <ol class="steps">
-      <li>You send one email (the form above writes it). Your email address is your sign-up; there's no account or password.</li>
+      <li>Enter your email and tap the confirm link we send you. That's your sign-up: no account, no password.</li>
       <li>We check the campground every 5 minutes for cancellations.</li>
       <li>The moment a site is free for every night of your stay, you get an email with a link straight to that site. Book fast; open sites go quickly.</li>
     </ol>
@@ -193,7 +182,7 @@
     <h2>Questions</h2>
     <details>
       <summary>Which campgrounds can it watch?</summary>
-      <p><span id="supported">Recreation.gov (US national parks, national forests, Army Corps lakes); Parks Canada, BC Parks, Ontario Parks and Washington State Parks; and private campgrounds that book through Firefly Reservations.</span> Paste a link from another booking site and the reply will tell you if it's not supported yet.</p>
+      <p><span id="supported">Recreation.gov (US national parks, national forests, Army Corps lakes); Parks Canada, BC Parks, Ontario Parks and Washington State Parks; and private campgrounds that book through Firefly Reservations.</span> Paste a link from another booking site and the page will tell you if it's not supported yet.</p>
     </details>
     <details>
       <summary>What about a music festival or a big game?</summary>
@@ -202,7 +191,7 @@
     </details>
     <details>
       <summary>How do I stop alerts?</summary>
-      <p>Reply "stop" to any email from us. Reply "list" to see what you're watching. Each person can watch up to 3 stays at once, up to about a year ahead.</p>
+      <p>Every email from us has a link to stop that alert and a link to see all your alerts. Each person can watch up to 3 stays at once, up to about a year ahead.</p>
     </details>
     <details>
       <summary>Is my email shared?</summary>
@@ -218,8 +207,8 @@
 </main>
 
 <script>
-// Sign-ups go here; Cloudflare Email Routing forwards it to the Gmail inbox alerts.py reads.
-const ALERTS_EMAIL = "alerts@campswoop.com";
+// The CampSwoop API (worker/) takes sign-ups and emails the confirm link.
+const API = "https://api.campswoop.com";
 const RECGOV_SEARCH = "https://www.recreation.gov/api/search";
 const MAX_NIGHTS = 14;
 
@@ -274,7 +263,18 @@ function useLink(text) {
     return notice($("q-notice"), "That link doesn't say which park. Open the park on that site, search any dates, and paste the link from the results page.");
   }
   notice($("q-notice"), `We can't watch ${escapeHtml(host || "that booking site")} yet. Supported: ${SOURCES.map(s => s.title).join(", ")}.`);
+  // Count which booking sites people want, once each, after they stop typing.
+  clearTimeout(requestTimer);
+  if (host.includes(".") && !requestedHosts.has(host)) {
+    requestTimer = setTimeout(() => {
+      requestedHosts.add(host);
+      fetch(`${API}/requested`, { method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ host }), keepalive: true }).catch(() => {});
+    }, 1500);
+  }
 }
+let requestTimer;
+const requestedHosts = new Set();
 
 async function search(q) {
   const seq = ++searchSeq;
@@ -369,32 +369,28 @@ $("length").addEventListener("input", update);
 const camping = () => document.querySelector('input[name="camping"]:checked').value;
 
 function campingText() {
+  if (state.place?.noFilter) return "any site";
   const kind = camping();
   const length = parseInt($("length").value, 10);
   const name = { any: "any site", tent: "tent", trailer: "trailer", motorhome: "motorhome or van" }[kind];
   return name + (["trailer", "motorhome"].includes(kind) && length > 0 ? `, ${length} ft` : "");
 }
 
-// --- Step 4: the email ---
-function composeEmail() {
+// --- Step 4: sign up ---
+function signup() {
   const s = stay();
   if (!state.place || !s.start) return null;
-  const range = s.start.getUTCMonth() === s.end.getUTCMonth()
-    ? `${monthDay(s.start)}–${s.end.getUTCDate()}` : `${monthDay(s.start)}–${monthDay(s.end)}`;
-  const subject = `Watch: ${state.place.name}, ${range}, ${s.end.getUTCFullYear()}`;
-  const body = [
-    "Please watch this campground and email me when a site opens for my whole stay.",
-    "",
-    `Campground: ${state.place.name}`,
-    `Link: ${state.place.url}`,
-    `Check in: ${iso(s.start)}`,
-    `Check out: ${iso(s.end)}`,
-    `Camping in: ${campingText()}`,
-    "",
-    "(Just tap Send. To stop alerts later, reply \"stop\".)",
-  ].join("\n");
-  return { subject, body, s };
+  const kind = state.place.noFilter ? "any" : camping();
+  const length = parseInt($("length").value, 10);
+  return { s, body: {
+    email: $("email").value.trim(), website: $("website").value, link: state.place.url, name: state.place.name,
+    check_in: iso(s.start), check_out: iso(s.end), camping: kind,
+    length: ["trailer", "motorhome"].includes(kind) && length > 0 ? length : 0,
+  } };
 }
+
+const validEmail = text => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(text.trim());
+let sending = false;
 
 function update() {
   const s = stay();
@@ -403,31 +399,37 @@ function update() {
   if (s.start) $("nights").textContent = `${s.nights} night${s.nights === 1 ? "" : "s"}: ${dayName(s.start)} → ${dayName(s.end)}. You'll get an alert only when one site is free for every night.`;
 
   $("camping-note").hidden = !state.place?.noFilter;
-  const mail = composeEmail();
-  const ready = !!mail;
-  for (const id of ["mailto", "gmail"]) $(id).setAttribute("aria-disabled", String(!ready));
-  $("show-copy").disabled = !ready;
-  $("share").disabled = !mail;
-  if (!mail) {
-    $("summary").textContent = "Pick a campground and dates first.";
-    $("copy-box").hidden = true;
-    return;
-  }
-  $("summary").innerHTML = `<b>${escapeHtml(state.place.name)}</b><br>${escapeHtml(dayName(mail.s.start))} → ${escapeHtml(dayName(mail.s.end))} · ${escapeHtml(campingText())}`;
-  const q = s => encodeURIComponent(s);
-  $("mailto").href = `mailto:${ALERTS_EMAIL}?subject=${q(mail.subject)}&body=${q(mail.body)}`;
-  $("gmail").href = `https://mail.google.com/mail/?view=cm&fs=1&to=${q(ALERTS_EMAIL)}&su=${q(mail.subject)}&body=${q(mail.body)}`;
-  $("copy-to").textContent = ALERTS_EMAIL;
-  $("copy-subject").textContent = mail.subject;
-  $("copy-body").textContent = mail.body;
+  const data = signup();
+  $("share").disabled = !data;
+  $("signup-button").disabled = !data || !validEmail($("email").value) || sending;
+  $("summary").innerHTML = data
+    ? `<b>${escapeHtml(state.place.name)}</b><br>${escapeHtml(dayName(data.s.start))} → ${escapeHtml(dayName(data.s.end))} · ${escapeHtml(campingText())}`
+    : "Pick a campground and dates first.";
 }
 
-$("show-copy").addEventListener("click", () => { $("copy-box").hidden = false; });
-document.querySelectorAll("[data-copy]").forEach(button => button.addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($(button.dataset.copy).textContent); button.textContent = "Copied"; }
-  catch (e) { button.textContent = "Select and copy it"; }
-  setTimeout(() => { button.textContent = "Copy"; }, 2000);
-}));
+$("email").addEventListener("input", update);
+$("form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const data = signup();
+  if (!data || !validEmail($("email").value) || sending) return;
+  sending = true;
+  $("signup-button").textContent = "Sending…";
+  update();
+  let result;
+  try {
+    const response = await fetch(`${API}/signup`, { method: "POST", headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify(data.body) });
+    result = await response.json();
+  } catch (e) {
+    result = { error: "We couldn't reach CampSwoop. Check your connection and try again." };
+  }
+  sending = false;
+  $("signup-button").textContent = "Get alerts";
+  update();
+  $("result").className = `result ${result.ok ? "ok" : "error"}`;
+  $("result").textContent = result.ok ? `${result.message} Not there? Check your spam or promotions folder.` : result.error;
+  $("result").hidden = false;
+});
 
 // --- Shareable links: ?link=<booking link>&in=YYYY-MM-DD&out=YYYY-MM-DD&camping=trailer&length=25 ---
 $("share").addEventListener("click", async () => {

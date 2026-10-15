@@ -1,67 +1,47 @@
 #!/usr/bin/env python3
-"""CampSwoop: email people when a booked-up campground opens a site for their dates.
+"""CampSwoop checker: email people when a booked-up campground opens a site for their dates.
 
-People sign up by emailing alerts@campswoop.com a booking link and their dates; the sign-up page in
-docs/ (campswoop.com) writes that email for them. Cloudflare Email Routing forwards that address to
-a Gmail account, which this script reads and sends from. Each run of this script:
-  1. answers new emails: sign-ups, "stop" and "list";
-  2. checks every active watch;
-  3. emails everyone watching a stay when a site opens for every night of it.
-
-Each active watch is a record message under the Gmail label "Watching", so the public repo never
-holds anyone's address. state.json only keeps which sites were open at the last check, keyed by
-campground and dates. Standard library only.
+People sign up on campswoop.com (docs/): they pick a campground and dates, enter their email, and tap
+the confirm link the CampSwoop API emails them. The API (worker/, a Cloudflare Worker at
+api.campswoop.com) keeps the email addresses and sends all email through Resend. Every few minutes
+this script asks the API for the active watches, checks each campground, and asks the API to email a
+watcher when a site opens for every night of their stay. It never sees an email address, so neither
+do its logs or this public repo. state.json keeps which sites were open at each watch's last check.
+Standard library only.
 
 Usage:
-  python alerts.py                # answer new emails, check every watch, send alerts
-  python alerts.py --dry-run      # same, but send nothing and change nothing
+  python alerts.py              # check every active watch and send alerts
+  python alerts.py --dry-run    # check and print the emails it would send; send and change nothing
   python alerts.py --check LINK CHECK_IN CHECK_OUT [--camping tent|trailer|motorhome|rv] [--length FT]
-                                  # print what's open for one stay; needs no Gmail
-  python alerts.py --test-email   # send a sample confirmation and alert to the alerts Gmail itself
+                                # print what's open for one stay; needs no API token
+  python alerts.py --preview    # print a sample alert email
 
-Environment (repo secrets):
-  GMAIL_ADDRESS         the Gmail account alerts@campswoop.com forwards to; alerts are sent from it
-  GMAIL_APP_PASSWORD    an App Password for that account
+Environment (repo secret):
+  CAMPSWOOP_API_TOKEN   shared with the Worker, where it's the API_TOKEN secret
 """
 
 import argparse
 import datetime as dt
-import email
 import gzip
+import hashlib
 import html
-import imaplib
 import json
 import os
 import re
-import secrets
-import smtplib
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from email import policy
-from email.message import EmailMessage
-from email.utils import formataddr, make_msgid, parseaddr
 from pathlib import Path
 
 # --- Settings -----------------------------------------------------------------
 
-SERVICE_NAME = "CampSwoop"
 SIGNUP_PAGE = "https://campswoop.com/"
-# People email this address; Cloudflare Email Routing forwards it to the Gmail account. Replies go here too.
-PUBLIC_ADDRESS = "alerts@campswoop.com"
-
-MAX_WATCHES_PER_PERSON = 3
-MAX_WATCHES_TOTAL = 50
-MAX_NIGHTS = 14
-MAX_DAYS_AHEAD = 400
-MAX_ALERTS_PER_STAY_PER_DAY = 6  # stops a flapping campground from flooding inboxes
-SITES_LISTED = 6                 # open sites linked in one alert
-
-# Gmail labels: one record message per active watch, and where answered emails and ended watches go.
-WATCHING, HANDLED, ENDED = "Watching", "Handled", "Ended"
+API_URL = os.environ.get("CAMPSWOOP_API_URL", "https://api.campswoop.com")  # override to test a local Worker
+MAX_ALERTS_PER_WATCH_PER_DAY = 6  # stops a flapping campground from flooding an inbox
+SITES_LISTED = 6                  # open sites linked in one alert
 
 HERE = Path(__file__).parent
 STATE_FILE = HERE / "state.json"
@@ -71,11 +51,6 @@ USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 CAMPING = {"any": "any site", "tent": "a tent", "trailer": "a trailer", "motorhome": "a motorhome or van",
            "rv": "an RV"}
-
-
-def redact(text):
-    """Hide email addresses; the run log of a public repo is public."""
-    return re.sub(r"[\w.+-]+@[\w-]+(\.[\w-]+)+", "<email>", str(text))
 
 
 def today():
@@ -101,12 +76,6 @@ class Stay:
     def key(self):
         return ":".join([self.source, self.place, self.check_in.isoformat(), self.check_out.isoformat(),
                          self.camping, str(self.length)])
-
-    @classmethod
-    def from_key(cls, key):
-        source, place, check_in, check_out, camping, length = key.split(":")
-        return cls(source, place, dt.date.fromisoformat(check_in), dt.date.fromisoformat(check_out),
-                   camping, int(length))
 
     @property
     def nights(self):
@@ -207,7 +176,7 @@ class Source:
         return self.title
 
     def check_request(self, stay):
-        """Raise ValueError, with a message for the sender, if this stay can't be watched here."""
+        """Raise ValueError, with a message for the watcher, if this stay can't be watched here."""
 
 
 class RecreationGov(Source):
@@ -472,279 +441,13 @@ class Camis(Source):
 SOURCES = {"recgov": RecreationGov(), "firefly": Firefly(), "camis": Camis()}
 
 
-# --- Reading emails -----------------------------------------------------------
-
-MONTH_NAMES = "jan feb mar apr may jun jul aug sep oct nov dec".split()
-MONTH = (r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?"
-         r"|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?")
-DAY = r"(\d{1,2})(?:st|nd|rd|th)?"
-DATES = re.compile("|".join([
-    r"\b(?P<iso>(\d{4})-(\d{1,2})-(\d{1,2}))\b",
-    rf"\b(?P<range>{MONTH}\s+{DAY}\s*(?:-|–|—|to|through|thru)\s*(?:{MONTH}\s+)?{DAY}(?:,?\s+(\d{{4}}))?)\b",
-    rf"\b(?P<named>{MONTH}\s+{DAY}(?:,?\s+(\d{{4}}))?)\b",
-    r"\b(?P<us>(\d{1,2})/(\d{1,2})(?:/(\d{4}|\d{2}))?)\b",
-]), re.I)
-URL = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
-
-
-def resolve(year, month, day, now):
-    """A date; without a year, the next time that month and day comes around."""
-    if year:
-        year = int(year)
-        return dt.date(year + 2000 if year < 100 else year, month, day)
-    date = dt.date(now.year, month, day)
-    return date if date >= now else dt.date(now.year + 1, month, day)
-
-
-def find_dates(text, now):
-    """Every date in the text, in order; "Jun 12-14" gives two."""
-    found = []
-    for match in DATES.finditer(URL.sub(" ", text)):
-        groups = match.groups()
-        try:
-            if match["iso"]:
-                found.append(dt.date(int(groups[1]), int(groups[2]), int(groups[3])))
-            elif match["range"]:
-                month1, day1, month2, day2, year = groups[5:10]
-                start_month = MONTH_NAMES.index(month1[:3].lower()) + 1
-                end_month = MONTH_NAMES.index(month2[:3].lower()) + 1 if month2 else start_month
-                wraps = end_month < start_month  # e.g. Dec 30 – Jan 2; a written year belongs to the end
-                if year:
-                    end = resolve(year, end_month, int(day2), now)
-                    start = dt.date(end.year - wraps, start_month, int(day1))
-                else:
-                    start = resolve(None, start_month, int(day1), now)
-                    end = dt.date(start.year + wraps, end_month, int(day2))
-                found += [start, end]
-            elif match["named"]:
-                month, day, year = groups[11:14]
-                found.append(resolve(year, MONTH_NAMES.index(month[:3].lower()) + 1, int(day), now))
-            else:
-                month, day, year = groups[15:18]
-                found.append(resolve(year, int(month), int(day), now))
-        except ValueError:  # e.g. Feb 30
-            continue
-    return found
-
-
-def find_camping(text):
-    """(camping key, length ft) from a "Camping in:" line, or from the whole text without one."""
-    line = re.search(r"^\s*camping in:\s*(.+)$", text, re.I | re.M)
-    scope = line.group(1) if line else "\n".join(
-        l for l in URL.sub(" ", text).splitlines() if not re.match(r"\s*campground:", l, re.I))
-    length = re.search(r"\b(\d{1,2})\s*(?:ft|feet|foot|'|-foot)", scope, re.I)
-    length = int(length.group(1)) if length else 0
-    if re.search(r"motor ?home|class [abc]\b|camper ?van|\bvan\b", scope, re.I):
-        return "motorhome", length
-    if re.search(r"trailer|fifth wheel|5th wheel|pop-? ?up|toy hauler", scope, re.I):
-        return "trailer", length
-    if re.search(r"\brv\b|\bcamper\b", scope, re.I):
-        return "rv", length
-    if re.search(r"\btents?\b", scope, re.I):
-        return "tent", 0
-    return "any", 0
-
-
-def visible_text(message):
-    """What the sender wrote in this email: plain text (or HTML as text), minus any quoted reply."""
-    part = message.get_body(preferencelist=("plain", "html"))
-    try:
-        text = part.get_content() if part else ""
-    except (LookupError, ValueError):
-        text = ""
-    if part and part.get_content_type() == "text/html":
-        text = html.unescape(re.sub(r"<[^>]+>", " ", re.sub(r"(?is)<(style|script).*?</\1>|<br\s*/?>|</p>", "\n", text)))
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        if re.match(r"\s*(>|-+\s*Original Message|_{5,}|From:\s)", line, re.I) or \
-                re.match(r"\s*On\s", line) and "wrote:" in " ".join(lines[i:i + 3]):
-            lines = lines[:i]
-            break
-    return "\n".join(lines).strip()
-
-
-def full_text(message):
-    part = message.get_body(preferencelist=("plain", "html"))
-    try:
-        return part.get_content() if part else ""
-    except (LookupError, ValueError):
-        return ""
-
-
-def subject_of(message):
-    return re.sub(r"^\s*((re|fwd?|aw|sv)\s*:\s*)+", "", str(message.get("Subject", "")), flags=re.I).strip()
-
-
-def verified_sender(message):
-    """The From address, if Gmail confirmed it wasn't forged; otherwise None."""
-    address = parseaddr(str(message.get("From", "")))[1].strip().lower()
-    if "@" not in address:
-        return None
-    domain = re.escape(address.rsplit("@", 1)[1])
-    # Gmail adds its verdict as the topmost Authentication-Results header; anything below could be forged.
-    results = str((message.get_all("Authentication-Results") or [""])[0])
-    if "mx.google.com" not in results:
-        return None
-    if re.search(rf"\bdmarc=pass\b[^;]*header\.from={domain}\b", results, re.I) or \
-            re.search(rf"\bdkim=pass header\.i=@?([\w-]+\.)*{domain}\b", results, re.I) or \
-            re.search(rf"\bspf=pass\b.*smtp\.mailfrom=(\S*@)?([\w-]+\.)*{domain}\b", results, re.I):
-        return address
-    return None
-
-
-def automated(message, address):
-    """True for bounces, vacation replies and mailing lists, which must never get a reply."""
-    return (str(message.get("Auto-Submitted", "no")).lower() != "no"
-            or str(message.get("Precedence", "")).lower() in ("bulk", "junk", "list")
-            or bool(message.get("List-Id") or message.get("List-Unsubscribe"))
-            or bool(re.match(r"(mailer-daemon|postmaster|no-?reply|do-?not-?reply|bounces?)\b", address)))
-
-
-# --- Watches ------------------------------------------------------------------
-
-@dataclass
-class Watch:
-    email: str
-    stay: Stay
-    name: str         # campground's display name
-    code: str         # short id people use to stop just this watch, e.g. "7K3PQ"
-    created: str
-    uid: bytes = b""  # IMAP UID of its record under the Watching label
-
-    def record(self, sender):
-        """The message stored under the Watching label; readable in Gmail, parsed back by from_record."""
-        message = EmailMessage()
-        message["Subject"] = f"{self.name} · {self.stay.short_dates()} {self.stay.check_out.year} · {self.email}"
-        message["From"] = formataddr((SERVICE_NAME, sender))
-        message["To"] = self.email
-        message["Date"] = email.utils.formatdate(localtime=True)
-        message.set_content(json.dumps({"email": self.email, "stay": self.stay.key, "name": self.name,
-                                        "code": self.code, "created": self.created}, indent=2) + "\n")
-        return message.as_bytes()
-
-    @classmethod
-    def from_record(cls, uid, message):
-        data = json.loads(full_text(message))
-        return cls(data["email"], Stay.from_key(data["stay"]), data["name"], data["code"], data["created"], uid)
-
-    def title(self):
-        return f"{self.name}, {self.stay.short_dates()}"
-
-
-def stop_link(code=None):
-    subject = f"Stop #{code}" if code else "Stop all"
-    return f"mailto:{PUBLIC_ADDRESS}?" + urllib.parse.urlencode({"subject": subject, "body": subject},
-                                                                quote_via=urllib.parse.quote)
-
-
-# --- Email in and out ---------------------------------------------------------
-
-class Mailbox:
-    """The alerts Gmail account over IMAP (reading) and SMTP (sending)."""
-
-    def __init__(self, address, password, dry_run=False):
-        self.address, self.password, self.dry_run = address, password, dry_run
-        self.imap = imaplib.IMAP4_SSL("imap.gmail.com")
-        self.imap.login(address, password)
-        self.smtp = None
-        if not dry_run:
-            for label in (WATCHING, HANDLED, ENDED):
-                self.imap.create(label)  # answers NO if the label already exists, which is fine
-
-    def close(self):
-        try:
-            self.imap.logout()
-        finally:
-            if self.smtp:
-                self.smtp.quit()
-
-    def folder_with(self, attribute):
-        """Name of the folder carrying a special-use attribute, e.g. \\Junk for Gmail's Spam."""
-        for line in self.imap.list()[1]:
-            line = line.decode()
-            if attribute in line.split(")")[0]:
-                return line.rsplit(' "/" ', 1)[1]
-        return None
-
-    def messages(self, folder, search="ALL"):
-        """[(uid, message)] in a folder, oldest first, without marking anything read."""
-        if self.imap.select(folder, readonly=self.dry_run)[0] != "OK":
-            return []
-        uids = self.imap.uid("SEARCH", None, search)[1][0].split()
-        found = []
-        for start in range(0, len(uids), 50):
-            data = self.imap.uid("FETCH", b",".join(uids[start:start + 50]).decode(), "(UID BODY.PEEK[])")[1]
-            for item in data:
-                if isinstance(item, tuple):
-                    uid = re.search(rb"UID (\d+)", item[0]).group(1)
-                    found.append((uid, email.message_from_bytes(item[1], policy=policy.default)))
-        return sorted(found, key=lambda pair: int(pair[0]))
-
-    def move(self, folder, uid, destination):
-        if self.dry_run:
-            return
-        self.imap.select(folder)
-        self.imap.uid("MOVE", uid.decode(), destination)
-
-    def rescue_spam(self):
-        """Move sign-up emails Gmail filed as spam back to the inbox."""
-        spam = self.folder_with("\\Junk")
-        if not spam:
-            return
-        for uid, message in self.messages(spam):
-            if verified_sender(message) and re.match(r"(watch|stop|list)\b", subject_of(message), re.I):
-                print("Moved a sign-up email out of spam")
-                self.move(spam, uid, "INBOX")
-
-    def watches(self):
-        watches = []
-        for uid, message in self.messages(WATCHING):
-            try:
-                watches.append(Watch.from_record(uid, message))
-            except (ValueError, KeyError) as error:
-                print(f"::warning::Skipping a Watching record that doesn't parse ({redact(error)})")
-        return watches
-
-    def add_watch(self, watch):
-        if self.dry_run:
-            return
-        self.imap.append(WATCHING, None, imaplib.Time2Internaldate(time.time()), watch.record(self.address))
-
-    def end_watch(self, watch):
-        if watch.uid:
-            self.move(WATCHING, watch.uid, ENDED)
-
-    def send(self, to, subject, text, html_body=None, reply_to_message=None):
-        message = EmailMessage()
-        message["Subject"] = subject
-        message["From"] = formataddr((SERVICE_NAME, self.address))
-        message["To"] = to
-        message["Reply-To"] = PUBLIC_ADDRESS
-        message["Message-ID"] = make_msgid(domain="campswoop.com")
-        message["Auto-Submitted"] = "auto-replied" if reply_to_message else "auto-generated"
-        if reply_to_message is not None and reply_to_message.get("Message-ID"):
-            original = str(reply_to_message["Message-ID"])
-            message["In-Reply-To"] = original
-            message["References"] = f"{reply_to_message.get('References', '')} {original}".strip()
-        message.set_content(text)
-        if html_body:
-            message.add_alternative(html_body, subtype="html")
-        if self.dry_run:
-            print(f"--- Would email {to}: {subject}\n{text}\n---")
-            return
-        if self.smtp is None:
-            self.smtp = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30)
-            self.smtp.login(self.address, self.password)
-        self.smtp.send_message(message)
-
-
-# --- Email text ---------------------------------------------------------------
+# --- Emails -------------------------------------------------------------------
+# The API adds the stop and manage links to the end of every email it sends for us.
 
 def html_page(paragraphs):
     """A plain, phone-friendly HTML email from already-escaped HTML paragraphs."""
-    body = "".join(paragraphs)
-    return (f'<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-            f'font-size:16px;line-height:1.5;color:#1d2a20;max-width:560px">{body}</div>')
+    return ('<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
+            f'font-size:16px;line-height:1.5;color:#1d2a20;max-width:560px">{"".join(paragraphs)}</div>')
 
 
 def button(url, label):
@@ -759,7 +462,7 @@ def small(text_html):
 def openings_text(openings, place_url):
     lines = [f"  {opening.label}: {opening.url}" for opening in openings[:SITES_LISTED]]
     if len(openings) > SITES_LISTED:
-        lines.append(f"  …and {len(openings) - SITES_LISTED} more: {place_url}")
+        lines.append(f"  ...and {len(openings) - SITES_LISTED} more: {place_url}")
     return "\n".join(lines)
 
 
@@ -771,297 +474,201 @@ def openings_html(openings, place_url):
     return f"<ul>{items}</ul>"
 
 
-def alert_email(watch, openings):
-    source = SOURCES[watch.stay.source]
-    place_url = source.booking_url(watch.stay.place)
-    subject = f"Campsite open: {watch.title()}"
+def alert_email(name, stay, openings):
+    """(subject, text, html) saying sites are open for a watcher's whole stay."""
+    place_url = SOURCES[stay.source].booking_url(stay.place)
     count = len(openings)
-    lead = (f"{'A site is' if count == 1 else f'{count} sites are'} open at {watch.name} "
-            f"for your whole stay: {watch.stay.dates()}.")
+    lead = (f"{'A site is' if count == 1 else f'{count} sites are'} open at {name} "
+            f"for your whole stay: {stay.dates()}.")
     text = "\n\n".join([
         lead,
-        "Book fast; cancellations usually go within minutes:\n" + openings_text(openings, place_url),
+        "Book fast; open sites usually go within minutes:\n" + openings_text(openings, place_url),
         f"Campground page: {place_url}",
-        f"You'll keep getting alerts for this stay until check-in. Reply \"stop\" to end them (watch #{watch.code}).",
+        "You'll keep getting alerts for this stay until check-in.",
     ]) + "\n"
     body = html_page([
         f"<p><b>{html.escape(lead)}</b></p>",
         button(openings[0].url, "Book now"),
-        "<p>Book fast; cancellations usually go within minutes.</p>",
+        "<p>Book fast; open sites usually go within minutes.</p>",
         openings_html(openings, place_url),
         f'<p><a href="{html.escape(place_url)}">Campground page</a></p>',
-        small(f"Watching for {html.escape(watch.stay.rig())}. You'll keep getting alerts for this stay until "
-              f'check-in. <a href="{html.escape(stop_link(watch.code))}">Stop these alerts</a> '
-              f"(watch #{watch.code})."),
+        small(f"Watching for {html.escape(stay.rig())}. You'll keep getting alerts for this stay until check-in."),
     ])
-    return subject, text, body
+    return f"Campsite open: {name}, {stay.short_dates()}", text, body
 
 
-def confirmation_email(watch, openings):
-    source = SOURCES[watch.stay.source]
-    place_url = source.booking_url(watch.stay.place)
-    facts = [f"Campground: {watch.name} ({source.site_name(watch.stay.place)})",
-             f"Stay: {watch.stay.dates()}",
-             f"Camping in: {watch.stay.rig()}"]
-    if openings:
-        status = (f"Good news: {'a site is' if len(openings) == 1 else f'{len(openings)} sites are'} "
-                  "open for every night right now. Book now:")
-    else:
-        status = ("Right now no site is free for every night of your stay. We check every 5 minutes and "
-                  "will email you as soon as one is.")
-    text = "\n\n".join(filter(None, [
-        "You're signed up. " + status,
-        openings_text(openings, place_url) if openings else "",
-        "\n".join(facts),
-        f"Wrong dates or campground? Reply \"stop\", then sign up again at {SIGNUP_PAGE}",
-        f"Reply \"stop\" anytime to end alerts for this stay (watch #{watch.code}), or \"list\" to see your watches.",
-    ])) + "\n"
-    body = html_page(list(filter(None, [
-        f"<p><b>You're signed up.</b> {html.escape(status)}</p>",
-        openings_html(openings, place_url) if openings else "",
-        "<p>" + "<br>".join(html.escape(fact) for fact in facts) + "</p>",
-        f'<p><a href="{html.escape(place_url)}">Campground page</a></p>',
-        small(f'Wrong dates or campground? <a href="{html.escape(stop_link(watch.code))}">Stop this '
-              f'watch</a>, then <a href="{SIGNUP_PAGE}">sign up again</a>. Reply "list" to see your watches '
-              f"(this one is #{watch.code})."),
-    ])))
-    return text, body
+def ended_email(name, problem):
+    """(subject, text, html) telling a watcher their alert couldn't start."""
+    text = f"{problem}\n\nYou can sign up again at {SIGNUP_PAGE} with the link from the campground's booking page.\n"
+    body = html_page([f"<p>{html.escape(problem)}</p>",
+                      f'<p><a href="{SIGNUP_PAGE}">Sign up again</a> with the link from the campground\'s booking page.</p>'])
+    return f"Your CampSwoop alert for {name} couldn't start", text, body
 
 
-def list_email(watches):
-    if not watches:
-        text = f"You're not watching any campgrounds. Sign up at {SIGNUP_PAGE}\n"
-        return text, html_page([f'<p>You\'re not watching any campgrounds. <a href="{SIGNUP_PAGE}">Sign up</a>.</p>'])
-    lines = [f"#{w.code}  {w.name}: {w.stay.dates()}, {w.stay.rig()}" for w in watches]
-    text = "Your watches:\n\n" + "\n".join(lines) + "\n\nTo end one, reply \"stop\" and its code, e.g. " \
-           f"\"stop #{watches[0].code}\". Reply \"stop all\" to end them all.\n"
-    items = "".join(f'<li>{html.escape(w.name)}: {html.escape(w.stay.dates())}, {html.escape(w.stay.rig())} '
-                    f'(<a href="{html.escape(stop_link(w.code))}">stop</a>)</li>' for w in watches)
-    return text, html_page(["<p>Your watches:</p>", f"<ul>{items}</ul>",
-                            small(f'<a href="{html.escape(stop_link())}">Stop all</a>')])
+# --- The CampSwoop API --------------------------------------------------------
 
+class Api:
+    """The Worker's /api/ endpoints: active watches in, emails out."""
 
-def help_email(problem):
-    supported = ", ".join(source.title for source in SOURCES.values())
-    text = "\n\n".join([
-        problem,
-        f"The easiest way to sign up is the form at {SIGNUP_PAGE}",
-        f"Or email {PUBLIC_ADDRESS} a campground's booking link and your check-in and check-out dates, e.g.\n"
-        "  https://www.recreation.gov/camping/campgrounds/232447\n  Check in: 2027-06-12\n  Check out: 2027-06-14",
-        f"Booking sites we can watch: {supported}.",
-    ]) + "\n"
-    return text, html_page([f"<p>{html.escape(problem)}</p>",
-                            f'<p>The easiest way to sign up is the <a href="{SIGNUP_PAGE}">sign-up page</a>.</p>',
-                            small(f"Booking sites we can watch: {html.escape(supported)}.")])
+    def __init__(self, token, dry_run=False):
+        self.token, self.dry_run = token, dry_run
 
-
-# --- Handling emails ----------------------------------------------------------
-
-def parse_request(text, now):
-    """(Stay, name) from a sign-up email, or raise ValueError with a message for the sender."""
-    for key, source in SOURCES.items():
+    def call(self, method, path, body=None):
+        request = urllib.request.Request(
+            f"{API_URL}{path}", method=method, data=None if body is None else json.dumps(body).encode(),
+            headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json",
+                     "User-Agent": USER_AGENT})
         try:
-            place = source.place_in(text)
-        except NotFound:
-            raise ValueError("That link doesn't point to a campground we could find.")
-        if place:
-            break
-    else:
-        links = [urllib.parse.urlparse(url).hostname or "" for url in URL.findall(text)]
-        links = [host.removeprefix("www.") for host in links if host]
-        if links:
-            raise ValueError(f"We can't watch {links[0]} yet.")
-        raise ValueError("We couldn't find a campground booking link in your email.")
-    dates = list(dict.fromkeys(find_dates(text, now)))
-    if not dates:
-        raise ValueError("We couldn't find your check-in and check-out dates.")
-    check_in = min(dates[:2])
-    check_out = max(dates[:2]) if len(dates) > 1 else check_in + dt.timedelta(days=1)
-    if check_in < now:
-        raise ValueError(f"Your check-in date, {day_name(check_in)}, {check_in.year}, has already passed.")
-    if (check_out - check_in).days > MAX_NIGHTS:
-        raise ValueError(f"We can watch stays of up to {MAX_NIGHTS} nights.")
-    if (check_in - now).days > MAX_DAYS_AHEAD:
-        raise ValueError("We can watch dates up to about a year ahead.")
-    camping, length = find_camping(text) if source.filters_camping else ("any", 0)
-    try:
-        name = source.name(place)
-    except NotFound:
-        raise ValueError("That link doesn't point to a campground we could find.")
-    stay = Stay(key, place, check_in, check_out, camping, length)
-    source.check_request(stay)
-    return stay, name
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode())
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError(f"{method} {path} answered {error.code}: {detail}") from error
 
+    def watches(self):
+        """{"watches": [...], "people", "pending", "emails_today"}; retries network errors."""
+        for attempt in range(3):
+            try:
+                return self.call("GET", "/api/watches")
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                if attempt == 2:
+                    raise
+                print(f"Reading watches failed ({error}); retrying", file=sys.stderr)
+                time.sleep(5 * (attempt + 1))
+
+    def notify(self, watch_id, message):
+        """Email the watcher. Not retried, so a failure can't send the same alert twice."""
+        self.send("/api/notify", watch_id, message)
+
+    def end(self, watch_id, message):
+        """End the watch and email the watcher why."""
+        self.send("/api/end", watch_id, message)
+
+    def send(self, path, watch_id, message):
+        subject, text, body = message
+        if self.dry_run:
+            print(f"--- Would call {path} for watch {watch_id}: {subject}\n{text}---")
+            return
+        self.call("POST", path, {"id": watch_id, "subject": subject, "text": text, "html": body})
+
+
+# --- Checking -----------------------------------------------------------------
 
 class Run:
-    """One pass: answer new emails, check every watch, send alerts."""
+    """One pass over every active watch."""
 
-    def __init__(self, mailbox, state, now):
-        self.mailbox, self.state, self.now = mailbox, state, now
-        self.watches = []
+    def __init__(self, api, state, now):
+        self.api, self.state, self.now = api, state, now
         self.errors = []
+        self.checked = {}  # stay key -> openings (None if the check failed); watchers of a stay share it
+
+    def place(self, link):
+        """(source key, place) for a booking link, kept in state.json under a hash of the link."""
+        places = self.state.setdefault("places", {})
+        key = hashlib.sha256(link.encode()).hexdigest()[:16]
+        if key not in places:
+            for source_key, source in SOURCES.items():
+                place = source.place_in(link)
+                if place:
+                    places[key] = f"{source_key}|{place}"
+                    break
+            else:
+                raise ValueError("CampSwoop can't watch that booking site.")
+        return places[key].split("|", 1)
+
+    def stay(self, watch):
+        source_key, place = self.place(watch["link"])
+        source = SOURCES[source_key]
+        camping, length = watch.get("camping") or "any", int(watch.get("length") or 0)
+        if not source.filters_camping or camping not in CAMPING:
+            camping, length = "any", 0
+        stay = Stay(source_key, place, dt.date.fromisoformat(watch["check_in"]),
+                    dt.date.fromisoformat(watch["check_out"]), camping, length)
+        source.check_request(stay)
+        return stay
+
+    def name(self, stay, fallback):
+        """The campground's name from its booking site, kept in state.json."""
+        names = self.state.setdefault("names", {})
+        key = f"{stay.source}|{stay.place}"
+        if key not in names:
+            try:
+                names[key] = SOURCES[stay.source].name(stay.place)
+            except Exception as error:
+                print(f"::warning::Couldn't look up the name of {key}: {error}")
+                return fallback
+        return names[key]
 
     def openings(self, stay):
-        """What's open for a stay now, or None if the booking site couldn't be checked."""
-        try:
-            return SOURCES[stay.source].openings(stay)
-        except Exception as error:
-            self.errors.append(f"checking {stay.key} failed: {error}")
-            return None
-
-    def remember(self, stay, openings):
-        self.state.setdefault("stays", {}).setdefault(stay.key, {})["open"] = sorted(o.id for o in openings)
-
-    def handle(self, message):
-        """Answer one email from the inbox."""
-        sender = verified_sender(message)
-        if not sender or sender in (self.mailbox.address.lower(), PUBLIC_ADDRESS) or automated(message, sender):
-            return
-        subject, text = subject_of(message), visible_text(message)
-        words = (subject + " " + text).split()
-        first = {re.sub(r"\W", "", word).lower() for word in (subject.split()[:1] + text.split()[:1])}
-        mine = [w for w in self.watches if w.email == sender]
-
-        if first & {"stop", "unsubscribe", "cancel", "remove", "end"}:
-            codes = set(re.findall(r"#([A-Z2-9]{5})\b", subject + " " + text, re.I)) or \
-                    set(re.findall(r"#([A-Z2-9]{5})\b", full_text(message), re.I))
-            codes = {code.upper() for code in codes}
-            everything = "all" in {w.lower().strip(".!") for w in words[:4]} or not codes
-            ending = [w for w in mine if everything or w.code in codes]
-            for watch in ending:
-                self.mailbox.end_watch(watch)
-                self.watches.remove(watch)
-            done = "\n".join(f"  {w.name}: {w.stay.dates()}" for w in ending)
-            text = (f"Stopped. No more alerts for:\n{done}\n" if ending
-                    else "You had no watches matching that, so nothing changed.\n")
-            text += f"\nSign up again anytime at {SIGNUP_PAGE}\n"
-            self.mailbox.send(sender, "Re: " + (subject or "Stop"), text, reply_to_message=message)
-            print(f"Stopped {len(ending)} watch(es)")
-            return
-
-        if first & {"list", "status", "watches"}:
-            text, body = list_email(mine)
-            self.mailbox.send(sender, "Re: " + (subject or "Your watches"), text, body, reply_to_message=message)
-            return
-
-        is_reply = bool(message.get("In-Reply-To")) or bool(re.match(r"\s*re\s*:", str(message.get("Subject", "")), re.I))
-        try:
-            # The body first: its "Check in:" lines are exact, while a subject may abbreviate the dates.
-            stay, name = parse_request(f"{text}\n{subject}", self.now)
-        except ValueError as problem:
-            if is_reply and not URL.search(text):
-                return  # e.g. "thanks!" in reply to an alert; nothing to answer
-            host = re.match(r"We can't watch (\S+) yet", str(problem))
-            if host:
-                requested = self.state.setdefault("requested_sites", {})
-                requested[host.group(1)] = requested.get(host.group(1), 0) + 1
-            text, body = help_email(str(problem))
-            self.mailbox.send(sender, "Re: " + (subject or SERVICE_NAME), text, body, reply_to_message=message)
-            print(f"Couldn't read a sign-up: {redact(problem)}")
-            return
-
-        reply = "Re: " + (subject or f"Watch {name}")
-        if any(w.stay == stay for w in mine):
-            self.mailbox.send(sender, reply, f"You're already watching {name} for {stay.dates()}.\n",
-                              reply_to_message=message)
-            return
-        if len(mine) >= MAX_WATCHES_PER_PERSON:
-            text, body = list_email(mine)
-            self.mailbox.send(sender, reply, f"You can watch up to {MAX_WATCHES_PER_PERSON} stays at a time. "
-                              "Stop one, then sign up again.\n\n" + text, body, reply_to_message=message)
-            return
-        if len(self.watches) >= MAX_WATCHES_TOTAL:
-            self.mailbox.send(sender, reply, f"Sorry, {SERVICE_NAME} is full right now. Try again in a few days.\n",
-                              reply_to_message=message)
-            print("::warning::Turned away a sign-up: the watch limit is reached")
-            return
-        code = ""
-        while not code or code in {w.code for w in self.watches}:
-            code = "".join(secrets.choice("ABCDEFGHJKMNPQRSTUVWXYZ23456789") for _ in range(5))
-        watch = Watch(sender, stay, name, code, dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
-        openings = self.openings(stay) or []
-        self.mailbox.add_watch(watch)
-        self.watches.append(watch)
-        self.remember(stay, openings)
-        text, body = confirmation_email(watch, openings)
-        self.mailbox.send(sender, reply, text, body, reply_to_message=message)
-        print(f"New watch: {SOURCES[stay.source].title} {stay.key}")
-
-    def answer_emails(self):
-        self.mailbox.rescue_spam()
-        for uid, message in self.mailbox.messages("INBOX"):
+        if stay.key not in self.checked:
             try:
-                self.handle(message)
+                self.checked[stay.key] = SOURCES[stay.source].openings(stay)
             except Exception as error:
-                self.errors.append(f"handling an email failed: {error!r}")
+                self.errors.append(f"checking {stay.key} failed: {error!r}")
+                self.checked[stay.key] = None
+        return self.checked[stay.key]
+
+    def check(self, watch):
+        try:
+            stay = self.stay(watch)
+        except (ValueError, NotFound) as problem:
+            message = str(problem) if isinstance(problem, ValueError) else \
+                "We couldn't find that campground on its booking site, so this alert has ended."
+            self.api.end(watch["id"], ended_email(watch["name"], message))
+            print(f"Ended watch {watch['id']}: {message}")
+            return
+        openings = self.openings(stay)
+        if openings is None:
+            return
+        known = self.state.setdefault("watches", {}).setdefault(watch["id"], {})
+        new = [o for o in openings if o.id not in set(known.get("open", []))]
+        print(f"Watch {watch['id']} ({stay.key}): {len(openings)} open, {len(new)} new")
+        if new:
+            sent_on, sent = known.get("alerted", ["", 0])
+            sent = sent if sent_on == self.now.isoformat() else 0
+            if sent >= MAX_ALERTS_PER_WATCH_PER_DAY:
+                print(f"::warning::Watch {watch['id']} already got {sent} alerts today; holding off")
+            else:
                 try:
-                    sent = email.utils.parsedate_to_datetime(str(message["Date"]))
-                    fresh = dt.datetime.now(dt.timezone.utc) - sent < dt.timedelta(days=1)
-                except (TypeError, ValueError):
-                    fresh = False
-                if fresh:
-                    continue  # leave it in the inbox and try again next check (e.g. the booking site was down)
-            self.mailbox.move("INBOX", uid, HANDLED)
-
-    def end_past_watches(self):
-        for watch in [w for w in self.watches if w.stay.check_in < self.now]:
-            self.mailbox.end_watch(watch)
-            self.watches.remove(watch)
-            print(f"Ended a watch whose check-in has passed: {watch.stay.key}")
-
-    def check(self):
-        stays = {w.stay for w in self.watches}
-        for stay in sorted(stays, key=lambda s: s.key):
-            openings = self.openings(stay)
-            if openings is None:
-                continue
-            known = self.state.get("stays", {}).get(stay.key, {})
-            new = [o for o in openings if o.id not in set(known.get("open", []))]
-            print(f"{stay.key}: {len(openings)} open, {len(new)} new")
-            if new:
-                sent_on, sent = known.get("alerted", ["", 0])
-                sent = sent if sent_on == self.now.isoformat() else 0
-                if sent < MAX_ALERTS_PER_STAY_PER_DAY:
-                    for watch in [w for w in self.watches if w.stay == stay]:
-                        subject, text, body = alert_email(watch, openings)
-                        try:
-                            self.mailbox.send(watch.email, subject, text, body)
-                        except Exception as error:
-                            self.errors.append(f"alert email failed: {error!r}")
-                    known["alerted"] = [self.now.isoformat(), sent + 1]
-                else:
-                    print(f"::warning::{stay.key} already alerted {sent} times today; holding off")
-            known["open"] = sorted(o.id for o in openings)
-            self.state.setdefault("stays", {})[stay.key] = known
-        # Forget stays nobody watches any more.
-        self.state["stays"] = {key: value for key, value in self.state.get("stays", {}).items()
-                               if key in {s.key for s in stays}}
+                    self.api.notify(watch["id"], alert_email(self.name(stay, watch["name"]), stay, openings))
+                except Exception as error:
+                    self.errors.append(f"alerting watch {watch['id']} failed: {error}")
+                    return  # leave "open" as it was, so the next check tries again
+                known["alerted"] = [self.now.isoformat(), sent + 1]
+        known["open"] = sorted(o.id for o in openings)
 
     def go(self):
-        self.watches = self.mailbox.watches()
-        self.answer_emails()
-        self.end_past_watches()
-        self.check()
-        print(f"{len(self.watches)} active watch(es), {len({w.email for w in self.watches})} people")
+        data = self.api.watches()
+        watches = data.get("watches", [])
+        for watch in watches:
+            try:
+                self.check(watch)
+            except Exception as error:
+                self.errors.append(f"watch {watch.get('id')} failed: {error!r}")
+        # Forget watches that ended and campgrounds nobody watches any more.
+        active = {watch["id"] for watch in watches}
+        links = {hashlib.sha256(watch["link"].encode()).hexdigest()[:16] for watch in watches}
+        self.state["watches"] = {watch_id: known for watch_id, known in self.state.get("watches", {}).items()
+                                 if watch_id in active}
+        self.state["places"] = {key: place for key, place in self.state.get("places", {}).items() if key in links}
+        self.state["names"] = {key: name for key, name in self.state.get("names", {}).items()
+                               if key in set(self.state["places"].values())}
+        print(f"{len(watches)} active watch(es) for {data.get('people', 0)} people; "
+              f"{data.get('pending', 0)} waiting to confirm; {data.get('emails_today', 0)} emails sent today")
 
 
 # --- Main ---------------------------------------------------------------------
 
-def credentials():
-    address = os.environ.get("GMAIL_ADDRESS", "").strip()
-    password = os.environ.get("GMAIL_APP_PASSWORD", "").replace(" ", "")
-    if not address or not password:
-        sys.exit("Set GMAIL_ADDRESS and GMAIL_APP_PASSWORD (the alerts Gmail account and its App Password).")
-    return address, password
-
-
 def check_one(link, check_in, check_out, camping, length):
-    now = today()
+    watch = {"id": "check", "link": link, "name": link, "check_in": check_in, "check_out": check_out,
+             "camping": camping, "length": length}
     try:
-        stay, name = parse_request(f"{link}\nCheck in: {check_in}\nCheck out: {check_out}\n"
-                                   f"Camping in: {camping} {length or ''} ft", now)
+        stay = Run(None, {}, today()).stay(watch)
+        name = SOURCES[stay.source].name(stay.place)
     except ValueError as problem:
         sys.exit(str(problem))
+    except NotFound:
+        sys.exit("Couldn't find that campground.")
     openings = SOURCES[stay.source].openings(stay)
     print(f"{name}: {stay.dates()}, {stay.rig()}")
     print(f"{len(openings)} open for every night" + (":" if openings else ""))
@@ -1069,52 +676,43 @@ def check_one(link, check_in, check_out, camping, length):
         print(openings_text(openings, SOURCES[stay.source].booking_url(stay.place)))
 
 
-def test_email():
-    address, password = credentials()
-    mailbox = Mailbox(address, password)
+def preview():
     stay = Stay("recgov", "232447", today() + dt.timedelta(days=60), today() + dt.timedelta(days=62))
-    watch = Watch(address, stay, "Upper Pines Campground, CA (sample)", "TEST1", "")
-    sample = [Opening("100", "Site 044 (Upper Pines)", "https://www.recreation.gov/camping/campsites/100")]
-    text, body = confirmation_email(watch, [])
-    mailbox.send(address, "Sample: sign-up confirmation", text, body)
-    subject, text, body = alert_email(watch, sample)
-    mailbox.send(address, "Sample: " + subject, text, body)
-    mailbox.close()
-    print(f"Sent a sample confirmation and alert to {address}")
+    sample = [Opening("100", "Site 044 (Upper Pines)", "https://www.recreation.gov/camping/campsites/100"),
+              Opening("150", "Site 123 (Upper Pines)", "https://www.recreation.gov/camping/campsites/150")]
+    subject, text, _ = alert_email("Upper Pines Campground, CA", stay, sample)
+    print(f"Subject: {subject}\n\n{text}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--dry-run", action="store_true", help="read and check, but send and change nothing")
+    parser.add_argument("--dry-run", action="store_true", help="check and print emails; send and change nothing")
     parser.add_argument("--check", nargs=3, metavar=("LINK", "CHECK_IN", "CHECK_OUT"),
                         help="print what's open for one stay")
     parser.add_argument("--camping", default="any", choices=sorted(CAMPING), help="with --check")
     parser.add_argument("--length", type=int, default=0, help="with --check: rig length in feet")
-    parser.add_argument("--test-email", action="store_true", help="email a sample confirmation and alert to the alerts Gmail")
+    parser.add_argument("--preview", action="store_true", help="print a sample alert email")
     args = parser.parse_args()
 
     if args.check:
         return check_one(*args.check, args.camping, args.length)
-    if args.test_email:
-        return test_email()
+    if args.preview:
+        return preview()
 
-    address, password = credentials()
+    token = os.environ.get("CAMPSWOOP_API_TOKEN", "").strip()
+    if not token:
+        sys.exit("Set CAMPSWOOP_API_TOKEN (the Worker's API_TOKEN secret).")
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
     before = json.dumps(state, sort_keys=True)
-    mailbox = Mailbox(address, password, dry_run=args.dry_run)
-    run = Run(mailbox, state, today())
-    try:
-        run.go()
-    finally:
-        mailbox.close()
+    run = Run(Api(token, dry_run=args.dry_run), state, today())
+    run.go()
     for error in run.errors:
-        print(f"::warning::{redact(error)}")
+        print(f"::warning::{error}")
     if not args.dry_run and json.dumps(state, sort_keys=True) != before:
         STATE_FILE.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
         print(f"Updated {STATE_FILE.name}")
-    # A failed check of one campground isn't worth a failure email; a run where nothing worked is.
-    checked = {w.stay for w in run.watches}
-    if checked and len([e for e in run.errors if e.startswith("checking")]) >= len(checked):
+    # One campground failing isn't worth a failure email; every check failing is.
+    if run.checked and all(openings is None for openings in run.checked.values()):
         sys.exit("Every availability check failed")
 
 

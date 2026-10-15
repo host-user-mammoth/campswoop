@@ -1,0 +1,11 @@
+{
+  "name": "campswoop-api",
+  "private": true,
+  "description": "CampSwoop sign-up and email API on Cloudflare Workers",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.146.0"
+  }
+}
