@@ -1,4 +1,5 @@
-/* CampSwoop: tabs, the time-aware hero, the watch configurator (sign-up), and the lazily loaded map. */
+/* CampSwoop: two tabs. Watch opens on the booking (sign-up) with the rest of the page below it; Map is the
+   globe of campgrounds, loaded the first time someone opens it. */
 "use strict";
 
 const API = "https://api.campswoop.com";
@@ -7,6 +8,7 @@ const MAX_NIGHTS = 14;
 const MAP_MODULE = new URL("map.js", document.currentScript.src).href;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const saveData = navigator.connection?.saveData === true;
+const finePointer = () => !matchMedia("(pointer: coarse)").matches;
 
 // Booking links CampSwoop can watch. Keep in sync with SOURCES in alerts.py and worker/src/index.js.
 const CAMIS_SITES = { "reservation.pc.gc.ca": "Parks Canada", "camping.bcparks.ca": "BC Parks",
@@ -24,7 +26,6 @@ const SOURCES = [
 
 const $ = id => document.getElementById(id);
 const state = { place: null }; // { name, detail, url, lookup?, noFilter? }
-const monthDay = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const dayName = d => d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const parseDate = s => (/^\d{4}-\d{2}-\d{2}$/.test(s || "") ? new Date(s + "T00:00:00Z") : null);
 const iso = d => d.toISOString().slice(0, 10);
@@ -34,7 +35,6 @@ const localToday = () => {
   return parseDate(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`);
 };
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const navHeight = () => $("nav").offsetHeight;
 
 // ---------------------------------------------------------------- Tabs
 const panels = { watch: $("panel-watch"), map: $("panel-map") };
@@ -91,29 +91,24 @@ document.addEventListener("click", event => {
   const go = event.target.closest("[data-go]");
   if (!go) return;
   event.preventDefault();
-  const target = go.dataset.go;
-  if (target === "map") showTab("map", { animate: true });
-  else if (target === "configure") goToConfigurator();
+  if (go.dataset.go === "map") showTab("map", { animate: true });
+  else if (go.dataset.go === "booking") goToBooking();
   else showTab("watch", { animate: true });
 });
 // iOS Safari shows :active press states only when the page listens for touches.
 document.addEventListener("touchstart", () => {}, { passive: true });
 
-function scrollToElement(element, instant = false) {
-  const top = element.getBoundingClientRect().top + window.scrollY - navHeight() - 8;
-  window.scrollTo({ top, behavior: reduceMotion || instant ? "auto" : "smooth" });
-}
-
-function goToConfigurator(focusDates = false, { instant = false } = {}) {
-  if (document.body.dataset.tab !== "watch") showTab("watch", { scroll: false });
-  scrollToElement($("configure"), instant);
+// To the booking: the top of the Watch tab, with the campground (or, once one's chosen, the dates) ready.
+function goToBooking(focusDates = false) {
+  if (document.body.dataset.tab !== "watch") showTab("watch", { scroll: false, animate: true });
+  window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   // Phones won't open the keyboard from a timer, so focusing there would only light the field up.
-  if (matchMedia("(pointer: coarse)").matches) return;
+  if (!finePointer()) return;
   const target = focusDates || state.place ? $("in") : $("q");
-  setTimeout(() => target.focus({ preventScroll: true }), reduceMotion || instant ? 0 : 650);
+  setTimeout(() => target.focus({ preventScroll: true }), reduceMotion ? 0 : 450);
 }
 
-// Back and forward between the tabs. Other hashes (#configure from the skip link) are in-page anchors.
+// Back and forward between the tabs. Other hashes are in-page anchors.
 const tabFromHash = () => (location.hash === "#map" ? "map" : "watch");
 addEventListener("popstate", () => showTab(tabFromHash(), { scroll: false }));
 addEventListener("hashchange", () => {
@@ -135,8 +130,8 @@ const revealer = new IntersectionObserver(entries => {
   }
 }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
 document.querySelectorAll(".reveal").forEach(element => revealer.observe(element));
-// Fail-safe: a fast jump (a link to #configure, restoring scroll) can pass a section without the observer
-// firing for it; nothing above the bottom of the screen may stay invisible.
+// Fail-safe: a fast jump can pass a section without the observer firing for it; nothing above the bottom
+// of the screen may stay invisible.
 function revealPassed() {
   for (const element of document.querySelectorAll(".reveal:not(.in)")) {
     if (element.getBoundingClientRect().top < innerHeight) { element.classList.add("in"); revealer.unobserve(element); }
@@ -163,23 +158,14 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 15000);
 
-// The loop plays only while the hero is on screen, and anyone can stop it (WCAG 2.2.2).
-const heroPause = $("hero-pause");
-let heroPausedByVisitor = false;
+// The loop plays only while the hero is on screen.
 if (!reduceMotion && !saveData) {
   heroVideo.src = `assets/hero-${phase}.mp4`;
   heroVideo.preload = "auto";
   new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting && document.body.dataset.tab === "watch" && !heroPausedByVisitor) heroVideo.play().catch(() => {});
+    if (entry.isIntersecting && document.body.dataset.tab === "watch") heroVideo.play().catch(() => {});
     else heroVideo.pause();
   }).observe(hero);
-  heroVideo.addEventListener("playing", () => { heroPause.hidden = false; }, { once: true });
-  heroPause.addEventListener("click", () => {
-    heroPausedByVisitor = !heroPausedByVisitor;
-    if (heroPausedByVisitor) heroVideo.pause(); else heroVideo.play().catch(() => {});
-    heroPause.textContent = heroPausedByVisitor ? "Play" : "Pause";
-    heroPause.setAttribute("aria-label", `${heroPausedByVisitor ? "Play" : "Pause"} the background video`);
-  });
 }
 // Someone who turns on reduced motion mid-visit gets stillness right away.
 matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", event => {
@@ -189,18 +175,33 @@ matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", even
   window.CampSwoopMap?.stopSpin?.();
 });
 
-// The page ships the current counts; refresh them from the map data so they never go stale.
+// ---------------------------------------------------------------- The campgrounds we can watch
+// The map's list: rows of [system, lng, lat, name, area, ref]. Shared by the search, the counts and the map.
+const SYSTEM_NAMES = { r: "Recreation.gov", w: "Washington State Parks", b: "BC Parks", o: "Ontario Parks", p: "Parks Canada", f: "Firefly Reservations" };
+const CAMIS_HOSTS = { w: "washington.goingtocamp.com", b: "camping.bcparks.ca", o: "reservations.ontarioparks.ca", p: "reservation.pc.gc.ca" };
+let campgroundList;
+const campgrounds = () => (campgroundList ||= fetch("data/campgrounds.json").then(r => r.json()).then(data => data.places)
+  .catch(error => { campgroundList = null; throw error; }));
+// Keep in step with bookingLink() in map.js.
+function bookingLink([system, , , , , ref]) {
+  if (system === "r") return `https://www.recreation.gov/camping/campgrounds/${ref}`;
+  if (system === "f") return `https://app.fireflyreservations.com/reserve/property/${ref}`;
+  const [location, mapId] = String(ref).split("|");
+  return `https://${CAMIS_HOSTS[system]}/create-booking/results?resourceLocationId=${location}&mapId=${mapId}&searchTabGroupId=0&bookingCategoryId=0`;
+}
+
+// The page ships the current counts; refresh them from the data so they never go stale.
 (window.requestIdleCallback || (fn => setTimeout(fn, 1200)))(async () => {
   try {
     const places = await campgrounds();
-    $("coverage-count").textContent = places.length.toLocaleString();
+    for (const cell of document.querySelectorAll("[data-count]")) cell.textContent = places.length.toLocaleString();
     const counts = {};
     for (const [system] of places) counts[system] = (counts[system] || 0) + 1;
     for (const cell of document.querySelectorAll("#systems [data-system]")) cell.textContent = (counts[cell.dataset.system] || 0).toLocaleString();
   } catch (error) { /* keep the static figures */ }
 });
 
-// ---------------------------------------------------------------- Alert preview clip
+// ---------------------------------------------------------------- Example alert clip
 const alertVideo = $("alert-video");
 const replay = $("alert-replay");
 if (reduceMotion) {
@@ -210,7 +211,7 @@ if (reduceMotion) {
 } else {
   // Start from the empty card, so the alert builds itself rather than blanking a finished one.
   alertVideo.poster = "assets/alert-poster-start.webp";
-  // Load the clip (90 KB) only when it's about to scroll into view; with reduced motion it loads on Play.
+  // Load the clip (90 KB) only when it's about to scroll into view.
   new IntersectionObserver(([entry], observer) => {
     if (!entry.isIntersecting) return;
     observer.disconnect();
@@ -230,7 +231,7 @@ if (reduceMotion) {
 alertVideo.addEventListener("ended", () => { replay.textContent = "Replay"; replay.hidden = false; });
 replay.addEventListener("click", () => { replay.hidden = true; alertVideo.currentTime = 0; alertVideo.play().catch(() => {}); });
 
-// ---------------------------------------------------------------- Step 1: campground
+// ---------------------------------------------------------------- The booking: campground
 let searchTimer;
 let searchSeq = 0;
 $("q").addEventListener("input", () => {
@@ -241,6 +242,12 @@ $("q").addEventListener("input", () => {
   if (q.length < 3) { $("results").innerHTML = ""; return; }
   searchTimer = setTimeout(() => search(q), 280);
 });
+$("q").addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); $("results").querySelector("button:not(:disabled)")?.click(); }
+  if (event.key === "Escape") $("results").innerHTML = "";
+});
+// The list closes when attention moves on.
+document.addEventListener("pointerdown", event => { if (!event.target.closest(".cell-place")) $("results").innerHTML = ""; });
 
 let requestTimer;
 const requestedHosts = new Set();
@@ -268,20 +275,6 @@ function useLink(text) {
                                   body: JSON.stringify({ host }), keepalive: true }).catch(() => {});
     }, 1500);
   }
-}
-
-// The campgrounds CampSwoop can watch (the map's list): rows of [system, lng, lat, name, area, ref].
-const SYSTEM_NAMES = { r: "Recreation.gov", w: "Washington State Parks", b: "BC Parks", o: "Ontario Parks", p: "Parks Canada", f: "Firefly Reservations" };
-const CAMIS_HOSTS = { w: "washington.goingtocamp.com", b: "camping.bcparks.ca", o: "reservations.ontarioparks.ca", p: "reservation.pc.gc.ca" };
-let campgroundList;
-const campgrounds = () => (campgroundList ||= fetch("data/campgrounds.json").then(r => r.json()).then(data => data.places)
-  .catch(error => { campgroundList = null; throw error; }));
-// Keep in step with bookingLink() in map.js.
-function bookingLink([system, , , , , ref]) {
-  if (system === "r") return `https://www.recreation.gov/camping/campgrounds/${ref}`;
-  if (system === "f") return `https://app.fireflyreservations.com/reserve/property/${ref}`;
-  const [location, mapId] = String(ref).split("|");
-  return `https://${CAMIS_HOSTS[system]}/create-booking/results?resourceLocationId=${location}&mapId=${mapId}&searchTabGroupId=0&bookingCategoryId=0`;
 }
 
 // Search: every campground we can watch by name, from our own list at once; Recreation.gov's search then
@@ -333,11 +326,6 @@ function showResults(items) {
   }));
 }
 
-$("q").addEventListener("keydown", event => {
-  if (event.key === "Enter") { event.preventDefault(); $("results").querySelector("button:not(:disabled)")?.click(); }
-  if (event.key === "Escape") $("results").innerHTML = "";
-});
-
 async function lookupRecgov(url) {
   const id = url.match(/campgrounds\/(\d+)/);
   if (!id) return;
@@ -353,28 +341,33 @@ async function lookupRecgov(url) {
 }
 
 function choose(place) {
-  const hadFocus = $("pick").contains(document.activeElement); // the block that held focus is about to hide
+  const typing = document.activeElement === $("q") || $("results").contains(document.activeElement);
   state.place = place;
+  $("results").innerHTML = "";
+  $("q-notice").textContent = "";
   showChosen();
   if (place.lookup) lookupRecgov(place.url);
   update();
-  if (hadFocus) $("in").focus({ preventScroll: true });
+  if (typing) $("in").focus({ preventScroll: true });
 }
 
+// A chosen campground sits in the field itself, with × to pick another.
 function showChosen() {
-  $("pick").hidden = !!state.place;
-  $("chosen").hidden = !state.place;
-  if (state.place) { $("chosen-name").textContent = state.place.name; $("chosen-detail").textContent = state.place.detail; }
+  const chosen = !!state.place;
+  $("q").readOnly = chosen;
+  if (chosen) $("q").value = state.place.name;
+  $("clear").hidden = !chosen;
+  $("place-detail").textContent = chosen ? state.place.detail : "";
 }
 
-$("change").addEventListener("click", () => {
-  state.place = null; showChosen(); $("q").value = ""; $("results").innerHTML = ""; $("q").focus(); update();
+$("clear").addEventListener("click", () => {
+  state.place = null; showChosen(); $("q").value = ""; $("q").focus(); update();
 });
 
 // Notices are always-present live regions, shown only while they hold text (.notice:empty is hidden).
 function notice(element, htmlText) { element.innerHTML = htmlText; }
 
-// ---------------------------------------------------------------- Step 2: dates
+// ---------------------------------------------------------------- The booking: dates
 const today = localToday();
 $("in").min = iso(today);
 $("in").max = iso(addDays(today, 395));
@@ -400,7 +393,7 @@ function stay() {
   return { start, end, nights };
 }
 
-// ---------------------------------------------------------------- Step 3: camping in
+// ---------------------------------------------------------------- The booking: camping in
 const camping = () => document.querySelector('input[name="camping"]:checked').value;
 document.querySelectorAll('input[name="camping"]').forEach(radio => radio.addEventListener("change", () => {
   $("length-wrap").hidden = !["trailer", "motorhome"].includes(camping());
@@ -416,7 +409,7 @@ function campingText() {
   return name + (["trailer", "motorhome"].includes(kind) && length > 0 ? `, ${length} ft` : "");
 }
 
-// ---------------------------------------------------------------- Step 4: email, summary, submit
+// ---------------------------------------------------------------- The booking: email and sending
 const validEmail = text => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(text.trim());
 let sending = false;
 let sentKey = ""; // the last sign-up that went through
@@ -433,20 +426,6 @@ function signup() {
   } };
 }
 
-const flashTimers = {};
-function setSummary(id, value, empty) {
-  const element = $(id);
-  const text = value || empty;
-  if (element.textContent === text) return;
-  element.textContent = text;
-  element.classList.toggle("empty", !value);
-  // One ember flash once typing pauses, not a strobe on every keystroke.
-  clearTimeout(flashTimers[id]);
-  if (value && !reduceMotion) {
-    flashTimers[id] = setTimeout(() => element.animate([{ color: "#ff6a3d" }, { color: "#f4efe6" }], { duration: 600, easing: "ease-out" }), 400);
-  }
-}
-
 function update() {
   const s = stay();
   if ($("date-notice").textContent !== (s.error || "")) $("date-notice").textContent = s.error || "";
@@ -454,24 +433,15 @@ function update() {
     ? `${s.nights} night${s.nights === 1 ? "" : "s"}: ${dayName(s.start)} → ${dayName(s.end)}. One site must be free for every night.`
     : `One site must be free for every night. Stays up to ${MAX_NIGHTS} nights.`;
   $("camping-note").hidden = !state.place?.noFilter;
+  $("sum-rig").textContent = campingText();
 
   const email = $("email").value.trim();
-  setSummary("sum-place", state.place ? state.place.name : "", "Not chosen");
-  setSummary("sum-stay", s.start ? `${dayName(s.start)} → ${dayName(s.end)} · ${s.nights} night${s.nights === 1 ? "" : "s"}` : "", "No dates yet");
-  setSummary("sum-rig", campingText(), "Any site");
-  setSummary("sum-email", validEmail(email) ? email : "", "No email yet");
-
-  $("step-1").classList.toggle("done", !!state.place);
-  $("step-2").classList.toggle("done", !!s.start);
-  $("step-3").classList.toggle("done", !!state.place && !!s.start);
-  $("step-4").classList.toggle("done", validEmail(email));
-
   const data = signup();
-  $("share").disabled = !data;
   // After a sign-up the button rests until something changes, so the same watch isn't sent twice.
   const alreadySent = !!data && sentKey === JSON.stringify(data.body);
-  $("signup-button").disabled = !data || !validEmail(email) || sending || alreadySent;
-  $("signup-button").textContent = sending ? "Sending…" : alreadySent ? "Sent · check your inbox" : "Start watching";
+  const button = $("signup-button");
+  button.disabled = !data || !validEmail(email) || sending || alreadySent;
+  button.firstChild.textContent = sending ? "Sending… " : alreadySent ? "Sent " : "Watch ";
   // Say what's missing rather than leaving a silent, disabled button.
   const emailNeed = !email ? "your email" : !validEmail(email) ? "a complete email address" : "";
   const missing = [!state.place && "a campground", !s.start && "your dates", emailNeed].filter(Boolean);
@@ -480,7 +450,7 @@ function update() {
 }
 
 $("email").addEventListener("input", update);
-$("form").addEventListener("submit", async event => {
+$("watch").addEventListener("submit", async event => {
   event.preventDefault();
   const data = signup();
   if (!data || !validEmail($("email").value) || sending) return;
@@ -498,23 +468,29 @@ $("form").addEventListener("submit", async event => {
   if (result.ok) sentKey = JSON.stringify(data.body);
   update();
   // Shown before the text goes in, so screen readers announce it.
-  $("result").className = `result ${result.ok ? "ok" : "error"}`;
-  $("result").hidden = false;
-  $("result").textContent = result.ok ? `${result.message} Not there? Check your spam or promotions folder.` : result.error;
+  const box = $("result");
+  box.className = `result ${result.ok ? "ok" : "error"}`;
+  box.hidden = false;
+  box.textContent = result.ok ? `${result.message} Not there? Check your spam or promotions folder.` : result.error;
+  if (result.ok) {
+    // Going with friends: a link with everything but the email filled in.
+    const share = Object.assign(document.createElement("button"), { type: "button", className: "link", textContent: "Share these dates" });
+    share.addEventListener("click", () => shareDates(share));
+    box.append(" ", share);
+  }
 });
 
-// ---------------------------------------------------------------- Sharing and pre-filled links
 // ?link=<booking link>&in=YYYY-MM-DD&out=YYYY-MM-DD&camping=trailer&length=25
-$("share").addEventListener("click", async () => {
+async function shareDates(button) {
   const params = new URLSearchParams({ link: state.place.url, in: $("in").value, out: $("out").value });
   if (camping() !== "any" && !state.place.noFilter) params.set("camping", camping());
   if ($("length").value && !$("length-wrap").hidden) params.set("length", $("length").value);
   const url = `${location.origin}${location.pathname}?${params}`;
   try {
     if (navigator.share) await navigator.share({ title: "CampSwoop", text: `Watch ${state.place.name} with me`, url });
-    else { await navigator.clipboard.writeText(url); $("share-done").hidden = false; }
+    else { await navigator.clipboard.writeText(url); button.textContent = "Link copied"; }
   } catch (error) { /* cancelled */ }
-});
+}
 
 // ---------------------------------------------------------------- The map (loaded on first visit to the tab)
 let mapLoading = null;
@@ -529,11 +505,10 @@ function openMap() {
   mapLoading.then(module => module.open({ watchFromMap, reduceMotion })).catch(() => {});
 }
 
+// "Watch this campground" on the map fills in the booking on the Watch tab.
 function watchFromMap(place) {
-  showTab("watch", { scroll: false, animate: true });
   choose({ name: place.name, detail: place.detail, url: place.url, noFilter: !!place.noFilter });
-  // Straight to the form, behind the panel's fade: a smooth scroll would sweep through the whole hero.
-  requestAnimationFrame(() => goToConfigurator(true, { instant: true }));
+  goToBooking(true);
 }
 window.CampSwoop = { watchFromMap, showTab };
 
@@ -544,10 +519,12 @@ window.CampSwoop = { watchFromMap, showTab };
   if (parseDate(params.get("in"))) { $("in").value = params.get("in"); $("in").dispatchEvent(new Event("change")); }
   if (parseDate(params.get("out"))) $("out").value = params.get("out");
   const kind = document.querySelector(`input[name="camping"][value="${CSS.escape(params.get("camping") || "any")}"]`);
-  if (kind) { kind.checked = true; kind.dispatchEvent(new Event("change")); }
+  if (kind) {
+    kind.checked = true; kind.dispatchEvent(new Event("change"));
+    if (kind.value !== "any") $("options").open = true;
+  }
   if (/^\d{1,2}$/.test(params.get("length") || "")) $("length").value = params.get("length");
   update();
   showTab(location.hash === "#map" && !params.get("link") ? "map" : "watch", { scroll: false });
-  if (params.get("link")) setTimeout(() => goToConfigurator(true), 300);
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
 })();

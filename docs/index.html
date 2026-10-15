@@ -22,18 +22,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Chivo+Mono:wght@400..500&family=Noto+Serif+Display:wdth,wght@75..90,400&display=swap">
 <link rel="stylesheet" href="assets/site.css">
-<script>
-// The hero waits for its fonts (700 ms at most) so the title can't re-break halfway through its entrance.
-(() => {
-  const ready = () => document.documentElement.classList.add("type-ready");
-  if (!document.fonts) return ready();
-  Promise.race([Promise.all([document.fonts.load('400 1em "Noto Serif Display"'), document.fonts.load("800 1em Archivo")]),
-                new Promise(done => setTimeout(done, 700))]).then(ready, ready);
-})();
-</script>
 </head>
 <body data-tab="watch">
-<a class="skip" href="#configure" data-go="configure">Skip to sign-up</a>
+<a class="skip" href="#watch" data-go="booking">Skip to the booking</a>
 
 <header class="nav" id="nav">
   <a class="brand" href="#" data-go="watch" aria-label="CampSwoop home">
@@ -45,33 +36,73 @@
     <button class="tab" role="tab" id="tab-watch" aria-controls="panel-watch" aria-selected="true">Watch</button>
     <button class="tab" role="tab" id="tab-map" aria-controls="panel-map" aria-selected="false" tabindex="-1">Map</button>
   </div>
-  <a class="nav-cta" href="#configure" data-go="configure">Start a watch</a>
+  <a class="nav-cta" href="#watch" data-go="booking">Start a watch</a>
 </header>
 
 <main>
 <!-- ============ WATCH ============ -->
 <div id="panel-watch" role="tabpanel" aria-labelledby="tab-watch">
 
-  <section class="hero" id="hero" data-phase="night" aria-label="Introduction">
+  <!-- The first thing on screen: find a campground for your dates, with a line of context above. -->
+  <section class="hero" id="hero" data-phase="night" aria-label="Start a watch">
     <video class="hero-media" id="hero-video" muted loop playsinline preload="none" poster="assets/hero-night.webp" aria-hidden="true"></video>
     <div class="hero-shade" aria-hidden="true"></div>
-    <button type="button" class="hero-pause" id="hero-pause" aria-label="Pause the background video" hidden>Pause</button>
     <div class="hero-inner">
       <p class="hero-clock" id="hero-clock">Campsite cancellation alerts</p>
-      <h1 class="hero-title">
-        <span class="line"><span>Booked Solid?</span></span>
-        <span class="line"><span>We Swoop In.</span></span>
-      </h1>
-      <p class="hero-copy rise">Pick a campground and your dates. We check it every 5 minutes and email you when one site is free for every night of your stay.</p>
-      <div class="hero-actions rise">
-        <a class="btn btn-ember" href="#configure" data-go="configure">Start a watch <span class="arrow" aria-hidden="true">→</span></a>
-        <button class="btn btn-ghost" type="button" data-go="map">Open the map</button>
+      <p class="hero-copy rise">Booked solid? Pick a campground and your dates, and we'll email you the moment one site is free for every night of your stay.</p>
+
+      <form class="watch rise" id="watch" novalidate aria-label="Start a watch">
+        <div class="cell cell-place">
+          <label for="q" class="field-label">Campground</label>
+          <div class="place-input">
+            <input class="field" type="search" id="q" autocomplete="off" enterkeyhint="search" placeholder="Name or booking link"
+                   aria-describedby="place-detail" aria-controls="results">
+            <button type="button" class="clear" id="clear" aria-label="Choose a different campground" hidden>×</button>
+          </div>
+          <p class="place-detail" id="place-detail"></p>
+          <ul class="results" id="results" aria-live="polite"></ul>
+        </div>
+        <div class="cell"><label for="in" class="field-label">Check in</label><input class="field" type="date" id="in"></div>
+        <div class="cell"><label for="out" class="field-label">Check out</label><input class="field" type="date" id="out"></div>
+        <div class="cell cell-email">
+          <label for="email" class="field-label">Email</label>
+          <input class="field" type="email" id="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" enterkeyhint="send" placeholder="you@example.com">
+        </div>
+        <button type="submit" class="btn btn-ember watch-go" id="signup-button" disabled>Watch <span class="arrow" aria-hidden="true">→</span></button>
+        <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input type="text" id="website" tabindex="-1" autocomplete="off"></div>
+      </form>
+
+      <div class="watch-meta rise">
+        <details class="options" id="options">
+          <summary>Camping in <b id="sum-rig">Any site</b></summary>
+          <div class="options-body">
+            <div class="chips" role="radiogroup" aria-label="Camping in">
+              <label><input type="radio" name="camping" value="any" checked><span>Any site</span></label>
+              <label><input type="radio" name="camping" value="tent"><span>Tent</span></label>
+              <label><input type="radio" name="camping" value="trailer"><span>Trailer</span></label>
+              <label><input type="radio" name="camping" value="motorhome"><span>Motorhome or van</span></label>
+            </div>
+            <div class="length" id="length-wrap" hidden>
+              <label for="length" class="field-label">Length in feet</label>
+              <input class="field" type="number" id="length" min="8" max="60" inputmode="numeric" placeholder="25">
+            </div>
+            <p class="hint" id="camping-note" hidden>This booking site doesn't say which sites fit a tent or RV, so you'll hear about any open site.</p>
+          </div>
+        </details>
+        <p class="hint" id="nights">One site must be free for every night. Stays up to 14 nights.</p>
+        <button type="button" class="link find-map" data-go="map">Not sure where? Find one on the map</button>
+      </div>
+      <div class="watch-status">
+        <p class="needs" id="needs" aria-live="polite">Still needed: a campground, your dates and your email.</p>
+        <div id="q-notice" class="notice" role="status"></div>
+        <div id="date-notice" class="notice" role="status"></div>
+        <div id="result" class="result" role="status" hidden></div>
       </div>
     </div>
     <dl class="specs rise" aria-label="At a glance">
       <div>
         <dt><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5h13M3 13.5 8 3l5 10.5M8 9.5l-1.6 4M8 9.5l1.6 4"/></svg>Campgrounds</dt>
-        <dd id="coverage-count">4,767</dd>
+        <dd data-count>4,767</dd>
       </div>
       <div>
         <dt><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 3.1v1.1M8 8l2-3.46"/></svg>Checks every</dt>
@@ -84,78 +115,14 @@
     </dl>
   </section>
 
-  <section class="configure" id="configure" aria-labelledby="configure-title">
-    <header class="section-head reveal">
-      <h2 id="configure-title">Start a Watch</h2>
-      <p class="section-lead">Four details. No account, no password.</p>
-    </header>
-
-    <div class="config-grid">
-      <form class="steps" id="form" novalidate>
-        <fieldset class="step" id="step-1">
-          <legend><span class="step-num">01</span><span class="step-name">Campground</span></legend>
-          <div id="pick">
-            <label for="q" class="field-label">Name or booking link</label>
-            <input class="field" type="search" id="q" autocomplete="off" enterkeyhint="search" placeholder="Upper Pines, or paste a booking link" aria-describedby="q-hint" aria-controls="results">
-            <ul class="results" id="results" aria-live="polite"></ul>
-            <p class="hint" id="q-hint">Search all 4,767 campgrounds we can watch, on Recreation.gov, Parks Canada, BC Parks, Ontario Parks and Washington State Parks. For a Firefly campground, paste its booking link, or <button type="button" class="link" data-go="map">find it on the map</button>.</p>
-            <div id="q-notice" class="notice" role="status"></div>
-          </div>
-          <div id="chosen" class="chosen" hidden>
-            <div><strong id="chosen-name"></strong><span id="chosen-detail"></span></div>
-            <button type="button" class="link" id="change">Change</button>
-          </div>
-        </fieldset>
-
-        <fieldset class="step" id="step-2">
-          <legend><span class="step-num">02</span><span class="step-name">Dates</span></legend>
-          <div class="row">
-            <div><label for="in" class="field-label">Check in</label><input class="field" type="date" id="in"></div>
-            <div><label for="out" class="field-label">Check out</label><input class="field" type="date" id="out"></div>
-          </div>
-          <p class="hint" id="nights">One site must be free for every night. Stays up to 14 nights.</p>
-          <div id="date-notice" class="notice" role="status"></div>
-        </fieldset>
-
-        <fieldset class="step" id="step-3">
-          <legend><span class="step-num">03</span><span class="step-name">Camping in</span><span class="optional">Optional</span></legend>
-          <div class="chips" role="radiogroup" aria-label="Camping in">
-            <label><input type="radio" name="camping" value="any" checked><span>Any site</span></label>
-            <label><input type="radio" name="camping" value="tent"><span>Tent</span></label>
-            <label><input type="radio" name="camping" value="trailer"><span>Trailer</span></label>
-            <label><input type="radio" name="camping" value="motorhome"><span>Motorhome or van</span></label>
-          </div>
-          <div class="length" id="length-wrap" hidden>
-            <label for="length" class="field-label">Length in feet</label>
-            <input class="field" type="number" id="length" min="8" max="60" inputmode="numeric" placeholder="25">
-          </div>
-          <p class="hint" id="camping-note" hidden>This booking site doesn't say which sites fit a tent or RV, so you'll hear about any open site.</p>
-        </fieldset>
-
-        <fieldset class="step" id="step-4">
-          <legend><span class="step-num">04</span><span class="step-name">Email</span></legend>
-          <label for="email" class="field-label">Send alerts to</label>
-          <input class="field" type="email" id="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" enterkeyhint="send" placeholder="you@example.com">
-          <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input type="text" id="website" tabindex="-1" autocomplete="off"></div>
-        </fieldset>
-      </form>
-
-      <aside class="summary" aria-label="Your watch">
-        <div class="summary-card">
-          <p class="card-label">Your watch</p>
-          <dl class="summary-list">
-            <div><dt>Campground</dt><dd id="sum-place" class="empty">Not chosen</dd></div>
-            <div><dt>Stay</dt><dd id="sum-stay" class="empty">No dates yet</dd></div>
-            <div><dt>Camping in</dt><dd id="sum-rig">Any site</dd></div>
-            <div><dt>Alerts to</dt><dd id="sum-email" class="empty">No email yet</dd></div>
-          </dl>
-          <button type="submit" form="form" class="btn btn-ember btn-block" id="signup-button" disabled>Start watching</button>
-          <p class="needs" id="needs" aria-live="polite">Still needed: a campground, your dates and your email.</p>
-          <p class="fine">We email you a confirm link first. Alerts come from alerts@campswoop.com, and every one has a link to stop.</p>
-          <div id="result" class="result" role="status" hidden></div>
-          <p class="share-row"><button type="button" class="link" id="share" disabled>Share these dates</button> <span id="share-done" class="fine" hidden>Link copied.</span></p>
-        </div>
-        <figure class="preview reveal">
+  <section class="how" aria-labelledby="how-title">
+    <h2 class="reveal" id="how-title">What Happens Next</h2>
+    <ol class="how-list">
+      <li class="reveal"><span class="how-when">Today</span><h3>Confirm</h3><p>Tap the link in the email we send. That's the whole sign-up: no account, no password.</p></li>
+      <li class="reveal"><span class="how-when">Every 5 minutes</span><h3>We check</h3><p>We look for one site that's free for every night of your stay, right up to check-in.</p></li>
+      <li class="reveal"><span class="how-when">When one opens</span><h3>You book</h3><p>The alert links straight to the booking page. Open sites usually go within minutes, and you pay the campground directly.</p></li>
+      <li class="reveal how-alert">
+        <figure class="preview">
           <div class="preview-frame">
             <video id="alert-video" muted playsinline preload="none" poster="assets/alert-poster.webp" aria-label="Example alert: 2 sites open at Upper Pines Campground, CA, for Saturday June 12 to Monday June 14, 2027, with a Book now button and links to Site 044 and Site 123.">
               <source src="assets/alert.mp4" type="video/mp4">
@@ -164,16 +131,7 @@
           </div>
           <figcaption>Example alert</figcaption>
         </figure>
-      </aside>
-    </div>
-  </section>
-
-  <section class="how" aria-labelledby="how-title">
-    <h2 class="reveal" id="how-title">What Happens Next</h2>
-    <ol class="how-list">
-      <li class="reveal"><span class="how-when">Today</span><h3>Confirm</h3><p>Tap the link in the email we send. That's the whole sign-up: no account, no password.</p></li>
-      <li class="reveal"><span class="how-when">Every 5 minutes</span><h3>We check</h3><p>We look for one site that's free for every night of your stay, right up to check-in.</p></li>
-      <li class="reveal"><span class="how-when">When one opens</span><h3>You book</h3><p>The alert links straight to the booking page. Open sites usually go within minutes, and you pay the campground directly.</p></li>
+      </li>
     </ol>
   </section>
 
@@ -197,7 +155,7 @@
           <img src="assets/globe.webp" width="1200" height="1200" loading="lazy" decoding="async" alt="">
         </button>
         <figcaption aria-hidden="true">
-          <span class="tick tl">4,767 campgrounds</span>
+          <span class="tick tl"><span data-count>4,767</span> campgrounds</span>
           <span class="tick tr">6 booking systems</span>
           <span class="tick bl">OSM campsites up close</span>
           <span class="tick br">Night shadow, live</span>
@@ -221,7 +179,7 @@
     <div class="faq-list reveal">
       <details>
         <summary>Which campgrounds can it watch?</summary>
-        <p>Campgrounds on Recreation.gov (US national parks, national forests and Army Corps lakes), Parks Canada, BC Parks, Ontario Parks and Washington State Parks, 4,767 in all, plus private campgrounds that book through Firefly Reservations: paste the booking link. The map also shows other campsites from OpenStreetMap to help you find their booking page, but we can't watch those.</p>
+        <p>Campgrounds on Recreation.gov (US national parks, national forests and Army Corps lakes), Parks Canada, BC Parks, Ontario Parks and Washington State Parks, <span data-count>4,767</span> in all, plus private campgrounds that book through Firefly Reservations: paste the booking link. The map also shows other campsites from OpenStreetMap to help you find their booking page, but we can't watch those.</p>
       </details>
       <details>
         <summary>How fast do I need to book?</summary>
@@ -229,7 +187,7 @@
       </details>
       <details>
         <summary>Can I watch for a festival or a big game?</summary>
-        <p>Yes. Watch a campground near it for the event dates. Camping passes sold as event tickets can't be watched. Going with friends? Fill in the form, then share the dates so they get a link with everything filled in.</p>
+        <p>Yes. Watch a campground near it for the event dates. Camping passes sold as event tickets can't be watched. Going with friends? After you sign up, share the dates and they get the form filled in.</p>
       </details>
       <details>
         <summary>How do I stop alerts?</summary>
