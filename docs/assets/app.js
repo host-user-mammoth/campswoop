@@ -1,5 +1,6 @@
-/* CampSwoop: two tabs. Watch opens on the booking (sign-up) with the rest of the page below it; Map is the
-   globe of campgrounds, loaded the first time someone opens it. */
+/* CampSwoop: two tabs. Watch opens on the booking (sign-up), with how it works and the key figures on the
+   same first screen and the rest of the page below; Map is the globe of campgrounds, loaded the first time
+   someone opens it. */
 "use strict";
 
 const API = "https://api.campswoop.com";
@@ -146,17 +147,6 @@ const heroVideo = $("hero-video");
 const phase = (() => { const h = new Date().getHours(); return h >= 6 && h < 18 ? "day" : "night"; })();
 hero.dataset.phase = phase;
 heroVideo.poster = `assets/hero-${phase}.webp`;
-
-function partOfDay(hour) {
-  return hour < 5 ? "Tonight" : hour < 12 ? "This morning" : hour < 17 ? "This afternoon" : hour < 21 ? "This evening" : "Tonight";
-}
-function tickClock() {
-  const now = new Date();
-  const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-  $("hero-clock").textContent = `${partOfDay(now.getHours())} · ${time}`;
-}
-tickClock();
-setInterval(tickClock, 15000);
 
 // The loop plays only while the hero is on screen.
 if (!reduceMotion && !saveData) {

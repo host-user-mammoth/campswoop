@@ -83,8 +83,8 @@ button, .btn, .nav-cta, .chips label, .toggle, summary {
   letter-spacing: -0.015em; line-height: 0.98; text-wrap: balance;
 }
 /* Labels: the mono, short, for names and data. Hints, fine print and errors stay in Archivo. */
-.hero-clock, .specs dt, .field-label, .options summary, .preview figcaption, .sheet-handle, .map-clock, .pop-kicker,
-.map-results .group, .facts dt, .how-when, .tick {
+.hero-kicker, .steps-label, .step-n, .specs dt, .field-label, .options summary, .preview figcaption, .sheet-handle,
+.map-clock, .pop-kicker, .map-results .group, .facts dt, .tick {
   font-family: var(--font-mono); font-size: 11px; font-weight: 400; font-stretch: normal;
   letter-spacing: 0.12em; line-height: 1.4; text-transform: uppercase; color: var(--ink-3);
 }
@@ -162,8 +162,10 @@ button, .btn, .nav-cta, .chips label, .toggle, summary {
 .nav-cta:active { transform: scale(0.97); }
 body[data-tab="map"] .nav-cta { visibility: hidden; }
 
-/* ---------- Hero: the booking ---------- */
-.hero { position: relative; min-height: max(640px, 100svh); overflow: hidden; isolation: isolate; background: var(--ground); }
+/* ---------- Hero: everything at the top ---------- */
+/* What this is, the booking, how it works and the key figures, starting just under the nav so the first
+   screen explains itself. The video runs behind all of it. */
+.hero { position: relative; overflow: hidden; isolation: isolate; background: var(--ground); }
 .hero-media {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2;
   transform: scale(1.04); animation: hero-in 2.4s var(--ease) both;
@@ -171,31 +173,31 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 /* Both loops are graded in the files (muted, so ember stays the one saturated colour), not with a CSS filter. */
 .hero[data-phase="night"] .hero-media { object-position: 35% 50%; transform: scaleX(-1) scale(1.04); animation-name: hero-in-flip; }
 .hero[data-phase="day"] .hero-media { object-position: 50% 62%; }
+/* Words run across the whole width now, so the video is dimmed everywhere and most on the left. */
 .hero-shade {
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(11, 10, 9, 0.9) 0%, rgba(11, 10, 9, 0.62) 42%, rgba(11, 10, 9, 0) 72%),
-    linear-gradient(0deg, var(--ground) 0%, rgba(11, 10, 9, 0.6) 30%, rgba(11, 10, 9, 0) 62%),
-    linear-gradient(180deg, rgba(11, 10, 9, 0.55) 0%, rgba(11, 10, 9, 0) 18%);
+    linear-gradient(90deg, rgba(11, 10, 9, 0.86) 0%, rgba(11, 10, 9, 0.6) 48%, rgba(11, 10, 9, 0.28) 100%),
+    linear-gradient(0deg, var(--ground) 0%, rgba(11, 10, 9, 0.6) 26%, rgba(11, 10, 9, 0.12) 62%, rgba(11, 10, 9, 0.55) 100%);
 }
-/* At night the flames sit behind the words, so darken that patch as well. */
+/* At night the flames sit behind the steps, so darken that patch as well. */
 .hero[data-phase="night"] .hero-shade {
   background:
-    radial-gradient(55% 60% at 28% 66%, rgba(11, 10, 9, 0.72), rgba(11, 10, 9, 0) 72%),
-    linear-gradient(90deg, rgba(11, 10, 9, 0.9) 0%, rgba(11, 10, 9, 0.62) 45%, rgba(11, 10, 9, 0.08) 80%),
-    linear-gradient(0deg, var(--ground) 0%, rgba(11, 10, 9, 0.6) 30%, rgba(11, 10, 9, 0) 60%),
-    linear-gradient(180deg, rgba(11, 10, 9, 0.55) 0%, rgba(11, 10, 9, 0) 18%);
+    radial-gradient(60% 50% at 30% 66%, rgba(11, 10, 9, 0.6), rgba(11, 10, 9, 0) 72%),
+    linear-gradient(90deg, rgba(11, 10, 9, 0.86) 0%, rgba(11, 10, 9, 0.6) 48%, rgba(11, 10, 9, 0.28) 100%),
+    linear-gradient(0deg, var(--ground) 0%, rgba(11, 10, 9, 0.6) 26%, rgba(11, 10, 9, 0.12) 62%, rgba(11, 10, 9, 0.55) 100%);
 }
-.hero-inner { position: absolute; left: var(--inset-x); right: var(--inset-x); bottom: calc(140px + 4vh + var(--safe-bottom)); }
-.hero-clock { margin-bottom: 14px; color: var(--ink-2); animation: fade 1.2s var(--ease) 0.2s both; }
+.hero-inner { position: relative; padding: calc(var(--nav-h) + clamp(28px, 5vh, 64px)) var(--inset-x) 0; }
+.hero-kicker { margin-bottom: 12px; color: var(--ink-2); animation: fade 1.2s var(--ease) 0.2s both; }
 .hero-copy { max-width: 620px; font-size: clamp(17px, 1.45vw, 21px); line-height: 1.5; color: var(--ink); margin-bottom: 24px; }
 /* Coming back to the Watch tab shows the hero as it was left, without replaying its entrance. */
-.hero.played :is(.hero-media, .hero-clock, .rise) { animation: none; }
+.hero.played :is(.hero-media, .hero-kicker, .rise) { animation: none; }
 .rise { animation: rise 0.8s var(--ease) both; }
 .hero-copy.rise { animation-delay: 0.1s; }
 .watch.rise { animation-delay: 0.18s; }
 .watch-meta.rise { animation-delay: 0.26s; }
-.specs.rise { animation-delay: 0.34s; }
+.steps-wrap.rise { animation-delay: 0.34s; }
+.specs.rise { animation-delay: 0.42s; }
 
 /* The booking bar: campground, dates, email and the button, in one row on a wide screen. */
 .watch {
@@ -225,6 +227,8 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 .watch-go:disabled { border-width: 0 0 0 1px; border-color: var(--line); }
 .place-input { display: flex; align-items: center; gap: 6px; }
 .place-input .field[readonly] { cursor: default; text-overflow: ellipsis; }
+/* A chosen campground has our × (.clear); the browser's own would make two. */
+.place-input .field[readonly]::-webkit-search-cancel-button { display: none; }
 .clear {
   flex: none; width: 36px; height: 36px; margin-right: -8px; font-size: 20px; line-height: 1; color: var(--ink-2);
   background: none; border: 0; border-radius: 2px; cursor: pointer;
@@ -287,9 +291,22 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 .result.error { border-color: rgba(255, 74, 28, 0.6); background: var(--ember-soft); color: var(--ink); }
 .result .link { margin-left: 4px; }
 
+/* How it works: four numbered steps in a row under the booking. */
+.steps-wrap { max-width: 1200px; margin-top: clamp(32px, 5vh, 56px); }
+.steps-label { margin-bottom: 14px; color: var(--ink-2); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.steps li {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-content: start;
+  padding: 18px 20px 16px 0; border-top: 1px solid var(--line-strong);
+}
+.steps li + li { padding-left: 20px; border-left: 1px solid var(--line); }
+.step-n { grid-row: span 2; padding-top: 4px; color: var(--ember-hi); }
+.steps b { font-size: 16px; font-weight: 600; line-height: 1.35; }
+.steps li > span:last-child { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+
 /* The spec bar: a glyph and a short label over a big wide figure. */
 .specs {
-  position: absolute; left: 0; right: 0; bottom: 0; margin: 0;
+  position: relative; margin: clamp(32px, 5vh, 64px) 0 0;
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--line); padding: 0 var(--inset-x);
 }
@@ -303,18 +320,16 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 }
 .specs .unit { margin-left: 0.28em; font-size: 0.42em; font-weight: 700; letter-spacing: 0.04em; color: var(--ink-2); }
 
-/* ---------- What happens next, with the example alert ---------- */
+/* ---------- What you'll get: the example alert ---------- */
 .how, .faq { padding-left: var(--gutter); padding-right: var(--gutter); }
 .how h2, .teaser h2 { font-size: clamp(38px, 4.8vw, 72px); }
-.how { max-width: 1440px; margin: 0 auto; padding-top: clamp(88px, 10vw, 152px); padding-bottom: clamp(72px, 9vw, 128px); }
-.how h2 { margin-bottom: clamp(32px, 4vw, 56px); }
-.how-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 0.95fr); }
-.how-list li { padding: 28px 32px 0 0; border-top: 1px solid var(--line); }
-.how-list li + li { padding-left: 32px; border-left: 1px solid var(--line); }
-.how-list li.how-alert { padding-right: 0; }
-.how-when { display: block; margin-bottom: 20px; color: var(--ink-2); }
-.how-list h3 { font-size: 24px; font-weight: 600; letter-spacing: -0.005em; margin-bottom: 10px; }
-.how-list p { color: var(--ink-2); max-width: 34ch; }
+.how {
+  max-width: 1440px; margin: 0 auto; padding-top: clamp(88px, 10vw, 152px); padding-bottom: clamp(72px, 9vw, 128px);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: clamp(32px, 6vw, 96px); align-items: center;
+}
+.how h2 { margin-bottom: 24px; }
+.how-copy > p { color: var(--ink-2); max-width: 46ch; font-size: 18px; }
+.how-copy > .fine { margin-top: 16px; font-size: 14px; }
 .preview { display: grid; gap: 10px; }
 .preview-frame { position: relative; border: 1px solid var(--line); background: #0b0a09; aspect-ratio: 1; overflow: hidden; }
 .preview-frame video { width: 100%; height: 100%; object-fit: cover; }
@@ -529,9 +544,7 @@ body[data-tab="map"] .footer { display: none; }
 /* app.js sets .reveal-on just before it starts watching, so if the script never runs nothing stays hidden. */
 .reveal-on .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
 .reveal-on .reveal.in { opacity: 1; transform: none; }
-.how-list li.reveal:nth-child(2) { transition-delay: 0.07s; }
-.how-list li.reveal:nth-child(3) { transition-delay: 0.14s; }
-.how-list li.reveal:nth-child(4) { transition-delay: 0.21s; }
+.how .preview.reveal { transition-delay: 0.07s; }
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 @keyframes settle { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -563,9 +576,11 @@ body[data-tab="map"] .footer { display: none; }
   .faq { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .teaser-copy, .globe-frame { grid-column: 1 / -1; }
   .globe-frame { margin-top: 56px; max-width: 640px; }
-  .how-list { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; }
-  .how-list li:nth-child(3) { padding-left: 0; border-left: 0; }
-  .how-list li.how-alert .preview { max-width: 360px; }
+  .how { grid-template-columns: minmax(0, 1fr); }
+  .how .preview { max-width: 420px; }
+  /* The steps in two rows of two. */
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steps li:nth-child(3) { padding-left: 0; border-left: 0; }
 }
 @media (max-width: 760px) {
   :root { --nav-bar: 60px; }
@@ -575,32 +590,39 @@ body[data-tab="map"] .footer { display: none; }
   .tabs { position: relative; left: auto; top: auto; transform: none; margin-left: auto; }
   .tab { padding: 0 14px; }
   .nav-cta { display: none; }
-  /* Phones: a band of video at the top, then the booking on solid ground, all on the first screen. */
-  .hero { min-height: 0; }
-  .hero-media, .hero-shade { inset: 0 0 auto 0; height: 40svh; }
+  /* Phones: a short band of video under the nav, then the words and the booking straight away. */
+  .hero-media, .hero-shade { inset: 0 0 auto 0; height: 34svh; }
   /* No push-in here: a scaled video would overhang its fade by a few pixels. */
   .hero-media, .hero[data-phase] .hero-media { animation-name: fade; transform: none; }
   .hero[data-phase="night"] .hero-media { transform: scaleX(-1); }
   .hero-shade, .hero[data-phase] .hero-shade {
-    background: linear-gradient(180deg, rgba(11, 10, 9, 0.55) 0%, rgba(11, 10, 9, 0) 22%, rgba(11, 10, 9, 0) 40%, var(--ground) 100%);
+    background: linear-gradient(180deg, rgba(11, 10, 9, 0.55) 0%, rgba(11, 10, 9, 0.12) 22%, rgba(11, 10, 9, 0.6) 48%, var(--ground) 92%);
   }
-  .hero-inner { position: relative; left: auto; right: auto; bottom: auto; padding: calc(40svh - 88px) var(--gutter) 24px; }
-  .hero-clock { margin-bottom: 10px; }
+  /* At night the fire sits right behind the first lines, so the fade starts sooner. */
+  .hero[data-phase="night"] .hero-shade {
+    background: linear-gradient(180deg, rgba(11, 10, 9, 0.55) 0%, rgba(11, 10, 9, 0.2) 18%, rgba(11, 10, 9, 0.8) 46%, var(--ground) 84%);
+  }
+  .hero-inner { padding: calc(var(--nav-h) + 8svh) var(--gutter) 0; }
+  .hero-kicker { margin-bottom: 10px; }
   .hero-copy { font-size: 16px; margin-bottom: 18px; }
   .watch { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cell { padding: 12px 14px 8px; }
   .cell-email { grid-column: 1 / -1; border-left: 0; }
   .results { width: calc(100% + 2px); }
-  .find-map { margin-left: 0; }
-  .specs { position: relative; }
+  /* Camping in and the map link share one row; the nights hint goes under them. */
+  .watch-meta { gap: 0 16px; }
+  .find-map { order: 2; }
+  .watch-meta .hint { order: 3; flex-basis: 100%; margin-top: 2px; }
+  .wide-only { display: none; }
+  .steps-wrap { margin-top: 28px; }
+  .steps { grid-template-columns: minmax(0, 1fr); }
+  .steps li, .steps li + li { padding: 14px 0; border-left: 0; }
   .specs > div { padding: 16px 0 calc(18px + var(--safe-bottom)); }
   .specs > div + div { padding-left: 14px; }
   .specs dt { flex-direction: column; align-items: flex-start; gap: 8px; }
   .specs dd { font-size: clamp(22px, 7vw, 30px); }
   .how h2, .teaser h2, .faq h2 { font-stretch: 75%; font-size: clamp(36px, 10.4vw, 48px); }
-  .how-list { grid-template-columns: minmax(0, 1fr); }
-  .how-list li, .how-list li + li { padding: 24px 0 30px; border-left: 0; }
-  .how-when { margin-bottom: 12px; }
+  .how-copy > p { font-size: 16px; }
   .tick.tr, .tick.bl { display: none; }
   .facts { max-width: none; }
   .faq-list summary { font-size: 17px; }
@@ -644,13 +666,11 @@ body[data-tab="map"] .footer { display: none; }
 @media (max-width: 350px) {
   .brand span { display: none; }
 }
-/* Phones on their side: about 390px tall, too short to pin the booking to the bottom, so the hero grows with it. */
+/* Phones on their side: about 390px tall, so everything sits a little tighter. */
 @media (max-height: 500px) and (orientation: landscape) {
   :root { --nav-bar: 56px; }
-  .hero { min-height: 0; }
-  .hero-inner { position: relative; left: auto; right: auto; bottom: auto; padding: calc(var(--nav-h) + 20px) var(--inset-x) 24px; }
-  .specs { position: relative; }
-  .hero-clock { margin-bottom: 8px; }
+  .hero-inner { padding-top: calc(var(--nav-h) + 20px); }
+  .hero-kicker { margin-bottom: 8px; }
   .hero-copy { margin-bottom: 12px; font-size: 15px; }
   .specs > div { gap: 6px; padding: 10px 0 calc(12px + var(--safe-bottom)); }
   .specs dd { font-size: clamp(20px, 6svh, 28px); }

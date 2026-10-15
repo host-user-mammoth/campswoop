@@ -1,5 +1,5 @@
 {
-  "description": "Sign-up happy path on the redesigned CampSwoop page (mock API). Dates are set 30 nights out so the file never goes stale.",
+  "description": "Sign-up happy path on the CampSwoop booking bar (mock API). Dates are set 30 nights out so the file never goes stale.",
   "steps": [
     [
       "waitFor",
@@ -12,16 +12,20 @@
     ],
     [
       "waitFor",
-      "#chosen"
+      "#clear"
     ],
     [
       "assert",
-      "document.querySelector('#chosen-name').textContent.includes('Fair Campground')",
+      "document.querySelector('#q').value.includes('Fair Campground')",
       "the campground should be named from the Firefly link"
     ],
     [
       "evaluate",
       "(() => { const d = new Date(Date.now() + 30 * 864e5); const v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); const el = document.querySelector('#in'); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); return v; })()"
+    ],
+    [
+      "click",
+      "#options summary"
     ],
     [
       "click",
@@ -40,19 +44,11 @@
     [
       "assert",
       "!document.querySelector('#signup-button').disabled",
-      "Start watching should be enabled once campground, dates and email are filled"
+      "Watch should be enabled once campground, dates and email are filled"
     ],
     [
       "evaluate",
-      "document.querySelector('.summary-list').innerText"
-    ],
-    [
-      "evaluate",
-      "document.querySelector('#configure').scrollIntoView(); 'scrolled'"
-    ],
-    [
-      "wait",
-      1500
+      "document.querySelector('#sum-rig').textContent + ' | ' + document.querySelector('#nights').textContent"
     ],
     [
       "screenshot",

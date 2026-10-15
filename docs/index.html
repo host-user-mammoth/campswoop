@@ -43,12 +43,12 @@
 <!-- ============ WATCH ============ -->
 <div id="panel-watch" role="tabpanel" aria-labelledby="tab-watch">
 
-  <!-- The first thing on screen: find a campground for your dates, with a line of context above. -->
+  <!-- Everything at the top: what this is, the booking, how it works and the key figures, on the first screen. -->
   <section class="hero" id="hero" data-phase="night" aria-label="Start a watch">
     <video class="hero-media" id="hero-video" muted loop playsinline preload="none" poster="assets/hero-night.webp" aria-hidden="true"></video>
     <div class="hero-shade" aria-hidden="true"></div>
     <div class="hero-inner">
-      <p class="hero-clock" id="hero-clock">Campsite cancellation alerts</p>
+      <h1 class="hero-kicker">Campsite cancellation alerts</h1>
       <p class="hero-copy rise">Booked solid? Pick a campground and your dates, and we'll email you the moment one site is free for every night of your stay.</p>
 
       <form class="watch rise" id="watch" novalidate aria-label="Start a watch">
@@ -90,13 +90,23 @@
           </div>
         </details>
         <p class="hint" id="nights">One site must be free for every night. Stays up to 14 nights.</p>
-        <button type="button" class="link find-map" data-go="map">Not sure where? Find one on the map</button>
+        <button type="button" class="link find-map" data-go="map"><span class="wide-only">Not sure where? </span>Find one on the map</button>
       </div>
       <div class="watch-status">
         <p class="needs" id="needs" aria-live="polite">Still needed: a campground, your dates and your email.</p>
         <div id="q-notice" class="notice" role="status"></div>
         <div id="date-notice" class="notice" role="status"></div>
         <div id="result" class="result" role="status" hidden></div>
+      </div>
+
+      <div class="steps-wrap rise">
+        <h2 class="steps-label" id="steps-title">How it works</h2>
+        <ol class="steps" aria-labelledby="steps-title">
+          <li><span class="step-n">01</span><b>Pick a campground and dates</b><span>Search by name, or paste its booking link.</span></li>
+          <li><span class="step-n">02</span><b>Confirm your email</b><span>Tap the link we send. No account, no password.</span></li>
+          <li><span class="step-n">03</span><b>We check every 5 minutes</b><span>For one site that's free every night, right up to check-in.</span></li>
+          <li><span class="step-n">04</span><b>You book</b><span>The alert links straight to the booking page. Sites go fast.</span></li>
+        </ol>
       </div>
     </div>
     <dl class="specs rise" aria-label="At a glance">
@@ -116,23 +126,20 @@
   </section>
 
   <section class="how" aria-labelledby="how-title">
-    <h2 class="reveal" id="how-title">What Happens Next</h2>
-    <ol class="how-list">
-      <li class="reveal"><span class="how-when">Today</span><h3>Confirm</h3><p>Tap the link in the email we send. That's the whole sign-up: no account, no password.</p></li>
-      <li class="reveal"><span class="how-when">Every 5 minutes</span><h3>We check</h3><p>We look for one site that's free for every night of your stay, right up to check-in.</p></li>
-      <li class="reveal"><span class="how-when">When one opens</span><h3>You book</h3><p>The alert links straight to the booking page. Open sites usually go within minutes, and you pay the campground directly.</p></li>
-      <li class="reveal how-alert">
-        <figure class="preview">
-          <div class="preview-frame">
-            <video id="alert-video" muted playsinline preload="none" poster="assets/alert-poster.webp" aria-label="Example alert: 2 sites open at Upper Pines Campground, CA, for Saturday June 12 to Monday June 14, 2027, with a Book now button and links to Site 044 and Site 123.">
-              <source src="assets/alert.mp4" type="video/mp4">
-            </video>
-            <button type="button" class="replay" id="alert-replay" hidden>Replay</button>
-          </div>
-          <figcaption>Example alert</figcaption>
-        </figure>
-      </li>
-    </ol>
+    <div class="how-copy reveal">
+      <h2 id="how-title">What You'll Get</h2>
+      <p>One email when a site opens: the campground, your dates, which sites are free, and a button straight to the booking page. Open sites usually go within minutes, and you pay the campground directly.</p>
+      <p class="fine">Every email has a link to stop that alert and a link to see all of yours.</p>
+    </div>
+    <figure class="preview reveal">
+      <div class="preview-frame">
+        <video id="alert-video" muted playsinline preload="none" poster="assets/alert-poster.webp" aria-label="Example alert: 2 sites open at Upper Pines Campground, CA, for Saturday June 12 to Monday June 14, 2027, with a Book now button and links to Site 044 and Site 123.">
+          <source src="assets/alert.mp4" type="video/mp4">
+        </video>
+        <button type="button" class="replay" id="alert-replay" hidden>Replay</button>
+      </div>
+      <figcaption>Example alert</figcaption>
+    </figure>
   </section>
 
   <section class="teaser" aria-labelledby="teaser-title">

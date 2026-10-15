@@ -1,6 +1,6 @@
 // CampSwoop service worker: makes the site installable and keeps its shell available offline.
 // Network first, so a deploy shows up on the next visit; cached copies are only a fallback.
-const CACHE = "campswoop-v3"; // bump with each redesign so old shells are cleared
+const CACHE = "campswoop-v4"; // bump with each redesign so old shells are cleared
 const SHELL = ["./", "index.html", "assets/site.css", "assets/app.js", "assets/map.js", "assets/icon.svg",
                "assets/hero-night.webp", "assets/hero-day.webp", "manifest.webmanifest"];
 
