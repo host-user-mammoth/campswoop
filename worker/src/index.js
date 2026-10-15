@@ -421,8 +421,11 @@ function safeEqual(a, b) {
 }
 
 function corsHeaders(request, env) {
+  // The site itself, with or without www, and over http until GitHub Pages enforces https.
   const origin = request.headers.get("Origin") || "";
-  return [env.SITE, env.SITE.replace("://", "://www.")].includes(origin) ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {};
+  const host = new URL(env.SITE).host;
+  const allowed = ["https", "http"].flatMap(scheme => [`${scheme}://${host}`, `${scheme}://www.${host}`]);
+  return allowed.includes(origin) ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {};
 }
 
 function withCors(response, request, env) {

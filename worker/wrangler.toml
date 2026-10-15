@@ -15,4 +15,4 @@ REPLY_TO = "alerts@campswoop.com"
 [[d1_databases]]
 binding = "DB"
 database_name = "campswoop"
-database_id = "REPLACE_AFTER_D1_CREATE"
+database_id = "6f1c221c-24df-442b-9d68-2d40a15c0278"
