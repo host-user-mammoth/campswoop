@@ -444,19 +444,45 @@ SOURCES = {"recgov": RecreationGov(), "firefly": Firefly(), "camis": Camis()}
 # --- Emails -------------------------------------------------------------------
 # The API adds the stop and manage links to the end of every email it sends for us.
 
-def html_page(paragraphs):
-    """A plain, phone-friendly HTML email from already-escaped HTML paragraphs."""
-    return ('<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;'
-            f'font-size:16px;line-height:1.5;color:#1d2a20;max-width:560px">{"".join(paragraphs)}</div>')
+# A dark card in the site's colours (warm black, one ember accent), like the alert preview on campswoop.com.
+# Tables and inline styles only, because email apps drop most CSS; the Worker's emails use the same pieces.
+EMAIL_FONT = "'Helvetica Neue',Helvetica,Arial,sans-serif"
+
+
+def html_page(parts, kicker="CampSwoop", preheader=""):
+    """A dark, phone-friendly HTML email from already-escaped HTML parts."""
+    hidden = (f'<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">{html.escape(preheader)}</div>'
+              if preheader else "")
+    return (f'{hidden}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+            'bgcolor="#0b0a09" style="background:#0b0a09"><tr><td align="center" style="padding:24px 12px 8px">'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#141210" '
+            'style="max-width:560px;background:#141210;border:1px solid #2e2a26">'
+            f'<tr><td style="padding:28px 26px 12px;font-family:{EMAIL_FONT};font-size:16px;line-height:1.55;color:#f4efe6">'
+            f'<p style="margin:0 0 22px;font-family:{EMAIL_FONT};font-size:12px;font-weight:700;letter-spacing:3px;'
+            f'text-transform:uppercase;color:#ff6a3d">{html.escape(kicker)}</p>'
+            f'{"".join(parts)}</td></tr></table></td></tr></table>')
+
+
+def para(text_html, style=""):
+    return (f'<p style="margin:0 0 16px;font-family:{EMAIL_FONT};font-size:16px;line-height:1.55;'
+            f'color:#bdb4a8;{style}">{text_html}</p>')
+
+
+def link(url, label):
+    return f'<a href="{html.escape(url)}" style="color:#f4efe6;text-decoration:underline">{html.escape(label)}</a>'
 
 
 def button(url, label):
-    return (f'<p><a href="{html.escape(url)}" style="display:inline-block;background:#2f6b3a;color:#fff;'
-            f'text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">{html.escape(label)}</a></p>')
+    return ('<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 22px"><tr>'
+            '<td bgcolor="#ff4a1c" style="background:#ff4a1c;border-radius:2px">'
+            f'<a href="{html.escape(url)}" style="display:inline-block;padding:15px 26px;font-family:{EMAIL_FONT};'
+            'font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#170a05;'
+            f'text-decoration:none">{html.escape(label)}</a></td></tr></table>')
 
 
 def small(text_html):
-    return f'<p style="font-size:13px;color:#5b6b5e">{text_html}</p>'
+    return (f'<p style="margin:0 0 16px;font-family:{EMAIL_FONT};font-size:13px;line-height:1.5;'
+            f'color:#8f877c">{text_html}</p>')
 
 
 def openings_text(openings, place_url):
@@ -467,11 +493,13 @@ def openings_text(openings, place_url):
 
 
 def openings_html(openings, place_url):
-    items = "".join(f'<li><a href="{html.escape(o.url)}">{html.escape(o.label)}</a></li>'
-                    for o in openings[:SITES_LISTED])
+    rows = [(o.url, o.label) for o in openings[:SITES_LISTED]]
     if len(openings) > SITES_LISTED:
-        items += f'<li><a href="{html.escape(place_url)}">{len(openings) - SITES_LISTED} more</a></li>'
-    return f"<ul>{items}</ul>"
+        rows.append((place_url, f"{len(openings) - SITES_LISTED} more"))
+    items = "".join(f'<tr><td style="padding:11px 0;border-top:1px solid #2e2a26;font-family:{EMAIL_FONT};'
+                    f'font-size:15px;line-height:1.4">{link(url, label)}</td></tr>' for url, label in rows)
+    return ('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+            f'style="margin:0 0 18px;border-bottom:1px solid #2e2a26">{items}</table>')
 
 
 def alert_email(name, stay, openings):
@@ -487,21 +515,28 @@ def alert_email(name, stay, openings):
         "You'll keep getting alerts for this stay until check-in.",
     ]) + "\n"
     body = html_page([
-        f"<p><b>{html.escape(lead)}</b></p>",
+        f'<p style="margin:0;font-family:{EMAIL_FONT};font-size:60px;line-height:1;font-weight:800;'
+        f'color:#ff4a1c">{count}</p>',
+        f'<p style="margin:4px 0 20px;font-family:{EMAIL_FONT};font-size:17px;font-weight:800;letter-spacing:2px;'
+        f'text-transform:uppercase;color:#ff6a3d">{"site open" if count == 1 else "sites open"}</p>',
+        f'<p style="margin:0 0 4px;font-family:{EMAIL_FONT};font-size:22px;line-height:1.25;font-weight:700;'
+        f'color:#f4efe6">{html.escape(name)}</p>',
+        para(f"{html.escape(stay.dates())}, every night free"),
         button(openings[0].url, "Book now"),
-        "<p>Book fast; open sites usually go within minutes.</p>",
+        para("Book fast; open sites usually go within minutes."),
         openings_html(openings, place_url),
-        f'<p><a href="{html.escape(place_url)}">Campground page</a></p>',
+        para(link(place_url, "Campground page")),
         small(f"Watching for {html.escape(stay.rig())}. You'll keep getting alerts for this stay until check-in."),
-    ])
+    ], kicker="CampSwoop alert", preheader=lead)
     return f"Campsite open: {name}, {stay.short_dates()}", text, body
 
 
 def ended_email(name, problem):
     """(subject, text, html) telling a watcher their alert couldn't start."""
     text = f"{problem}\n\nYou can sign up again at {SIGNUP_PAGE} with the link from the campground's booking page.\n"
-    body = html_page([f"<p>{html.escape(problem)}</p>",
-                      f'<p><a href="{SIGNUP_PAGE}">Sign up again</a> with the link from the campground\'s booking page.</p>'])
+    body = html_page([para(html.escape(problem), "color:#f4efe6"),
+                      para(f"{link(SIGNUP_PAGE, 'Sign up again')} with the link from the campground's booking page.")],
+                     preheader=problem)
     return f"Your CampSwoop alert for {name} couldn't start", text, body
 
 

@@ -331,12 +331,13 @@ function confirmationEmail(env, watch) {
     "Didn't sign up? Ignore this email and you won't hear from us again.", "", "CampSwoop · campswoop.com",
   ].join("\n");
   const html = emailHtml([
-    "<p>Tap to confirm and start your alerts for:</p>",
-    `<p><b>${esc(watch.name)}</b><br>${esc(stay)}<br>Camping in: ${esc(rig(watch))}</p>`,
+    para("Tap to confirm and start your alerts for:"),
+    `<p style="margin:0 0 4px;font-family:${EMAIL_FONT};font-size:22px;line-height:1.25;font-weight:700;color:#f4efe6">${esc(watch.name)}</p>`,
+    para(`${esc(stay)}<br>Camping in: ${esc(rig(watch))}`),
     button(url, "Confirm my alert"),
-    "<p>Once you confirm, CampSwoop checks every 5 minutes and emails you as soon as a site is free for every night of your stay.</p>",
+    para("Once you confirm, CampSwoop checks every 5 minutes and emails you as soon as a site is free for every night of your stay."),
     small("Didn't sign up? Ignore this email and you won't hear from us again."),
-  ]);
+  ], `Confirm your alert for ${watch.name}, ${shortDates(watch)}.`);
   return { subject, text, html };
 }
 
@@ -346,7 +347,7 @@ function withFooter(env, watch, { subject, text, html }) {
   return {
     subject,
     text: `${text.trimEnd()}\n\n--\nStop these alerts: ${stopUrl}\nAll your alerts: ${manageUrl}\nCampSwoop · campswoop.com\n`,
-    html: html + emailHtml([small(`<a href="${esc(stopUrl)}">Stop these alerts</a> · <a href="${esc(manageUrl)}">All your alerts</a> · CampSwoop`)]),
+    html: html + emailFooter(`${emailLink(stopUrl, "Stop these alerts", "#bdb4a8")} · ${emailLink(manageUrl, "All your alerts", "#bdb4a8")} · CampSwoop`),
   };
 }
 
@@ -355,39 +356,93 @@ function unsubscribeHeaders(env, watch) {
            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
 }
 
-function emailHtml(parts) {
-  return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.5;color:#1d2a20;max-width:560px">${parts.join("")}</div>`;
+// A dark card in the site's colours, the same pieces alerts.py uses for alerts. Tables and inline styles only,
+// because email apps drop most CSS.
+const EMAIL_FONT = "'Helvetica Neue',Helvetica,Arial,sans-serif";
+
+function emailHtml(parts, preheader = "") {
+  const hidden = preheader ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all">${esc(preheader)}</div>` : "";
+  return `${hidden}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0b0a09" style="background:#0b0a09">` +
+    `<tr><td align="center" style="padding:24px 12px 8px">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#141210" style="max-width:560px;background:#141210;border:1px solid #2e2a26">` +
+    `<tr><td style="padding:28px 26px 12px;font-family:${EMAIL_FONT};font-size:16px;line-height:1.55;color:#f4efe6">` +
+    `<p style="margin:0 0 22px;font-family:${EMAIL_FONT};font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#ff6a3d">CampSwoop</p>` +
+    `${parts.join("")}</td></tr></table></td></tr></table>`;
+}
+
+// The stop and manage links under every alert, on the same dark ground as the card above them.
+function emailFooter(htmlText) {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0b0a09" style="background:#0b0a09">` +
+    `<tr><td align="center" style="padding:6px 12px 28px">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px">` +
+    `<tr><td style="padding:0 2px;font-family:${EMAIL_FONT};font-size:13px;line-height:1.5;color:#8f877c">${htmlText}</td></tr>` +
+    `</table></td></tr></table>`;
+}
+
+function para(htmlText, style = "") {
+  return `<p style="margin:0 0 16px;font-family:${EMAIL_FONT};font-size:16px;line-height:1.55;color:#bdb4a8;${style}">${htmlText}</p>`;
+}
+
+function emailLink(url, label, color = "#f4efe6") {
+  return `<a href="${esc(url)}" style="color:${color};text-decoration:underline">${esc(label)}</a>`;
 }
 
 function button(url, label) {
-  return `<p><a href="${esc(url)}" style="display:inline-block;background:#2f6b3a;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600">${esc(label)}</a></p>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 22px"><tr>` +
+    `<td bgcolor="#ff4a1c" style="background:#ff4a1c;border-radius:2px">` +
+    `<a href="${esc(url)}" style="display:inline-block;padding:15px 26px;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#170a05;text-decoration:none">${esc(label)}</a>` +
+    `</td></tr></table>`;
 }
 
 function small(htmlText) {
-  return `<p style="font-size:13px;color:#5b6b5e">${htmlText}</p>`;
+  return `<p style="margin:0 0 16px;font-family:${EMAIL_FONT};font-size:13px;line-height:1.5;color:#8f877c">${htmlText}</p>`;
 }
 
 // --- Pages -----------------------------------------------------------------------
 
+// The confirm, stop and manage pages wear the site's look: warm black, one ember accent, wide Archivo.
 function page(env, title, body, status = 200) {
   return new Response(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(title)} · CampSwoop</title>
+<meta name="theme-color" content="#0b0a09"><meta name="color-scheme" content="dark"><meta name="robots" content="noindex">
+<link rel="icon" href="${env.SITE}/assets/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
 <style>
-  :root { --bg: #f6f4ee; --surface: #fff; --text: #1d2a20; --muted: #5b6b5e; --line: #d9ded5; --accent: #2f6b3a; --accent-text: #fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #111612; --surface: #1a211c; --text: #e5ebe4; --muted: #9fb0a2; --line: #313d34; --accent: #7cc489; --accent-text: #0f1a11; } }
+  :root { --ground: #0b0a09; --line: rgba(244, 239, 230, 0.12); --line-strong: rgba(244, 239, 230, 0.24); --ink: #f4efe6;
+    --ink-2: #bdb4a8; --ember: #ff4a1c; --ember-hi: #ff6a3d; --on-ember: #170a05; --ease-out: cubic-bezier(0.23, 1, 0.32, 1); color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  main { max-width: 560px; margin: 0 auto; padding: 32px 16px; }
-  .brand a { color: var(--accent); font-weight: 700; text-decoration: none; }
-  h1 { font-size: 1.6rem; margin: 8px 0 12px; }
-  a { color: var(--accent); }
-  button { font: inherit; font-weight: 650; background: var(--accent); color: var(--accent-text); border: 0; border-radius: 10px; padding: 11px 16px; min-height: 44px; cursor: pointer; }
-  .list { list-style: none; padding: 0; }
-  .list li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
-  .list form { margin-top: 10px; }
+  html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; min-height: 100svh; background: var(--ground); color: var(--ink); font: 17px/1.6 "Archivo", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 640px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) calc(56px + env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px)); }
+  .brand { display: inline-flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; font-stretch: 125%; font-weight: 800; font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; }
+  .brand svg { width: 24px; height: 24px; fill: var(--ember); }
+  h1 { font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: clamp(32px, 8vw, 52px); line-height: 0.95; margin: clamp(56px, 14vh, 120px) 0 24px; text-wrap: balance; }
+  p { margin: 0 0 16px; color: var(--ink-2); max-width: 56ch; text-wrap: pretty; }
+  b { color: var(--ink); font-weight: 700; }
+  a { color: var(--ink); text-decoration-color: var(--line-strong); text-underline-offset: 4px; transition: color 0.2s, text-decoration-color 0.2s; }
+  a, button { touch-action: manipulation; }
+  :focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
+  button { font: inherit; font-size: 13px; font-weight: 700; font-stretch: 112%; letter-spacing: 0.16em; text-transform: uppercase;
+    background: var(--ember); color: var(--on-ember); border: 0; border-radius: 2px; min-height: 52px; padding: 0 26px; cursor: pointer;
+    -webkit-user-select: none; user-select: none; transition: background-color 0.2s, transform 0.16s var(--ease-out); }
+  button:active { transform: scale(0.97); background: var(--ember-hi); }
+  form { margin: 28px 0 0; }
+  .list { list-style: none; padding: 0; margin: 28px 0; border-top: 1px solid var(--line); }
+  .list li { padding: 20px 0; border-bottom: 1px solid var(--line); color: var(--ink-2); }
+  .list form { margin-top: 14px; }
+  .list button { min-height: 44px; padding: 0 18px; background: transparent; color: var(--ink); border: 1px solid var(--line-strong); }
+  .list i { font-style: normal; color: var(--ember-hi); }
+  @media (hover: hover) and (pointer: fine) {
+    a:hover { color: var(--ember-hi); text-decoration-color: var(--ember-hi); }
+    button:hover { background: var(--ember-hi); }
+    .list button:hover { background: transparent; border-color: var(--ember); color: var(--ember-hi); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style></head>
-<body><main><p class="brand"><a href="${env.SITE}">⛺ CampSwoop</a></p><h1>${esc(title)}</h1>${body}</main></body></html>`,
+<body><main><a class="brand" href="${env.SITE}"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M2 21.5c6.5-.6 11-3.8 14-9.5 2.4 4.6 6.6 8.4 14 9.5-7.6 2.3-11.8 1.3-14-1.8-3 3.2-7.4 4-14 1.8z"/></svg>CampSwoop</a>
+<h1>${esc(title)}</h1>${body}</main></body></html>`,
     { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
 }
 
