@@ -121,6 +121,7 @@ async function signup(request, env) {
   if (active >= MAX_ACTIVE_WATCHES) return json({ error: "CampSwoop is full right now. Please try again in a few days." }, 503);
 
   let watch = same;
+  const lastSent = same && same.updated;
   if (watch) {
     // Same pending sign-up again: resend the confirm email, but not more than every 10 minutes.
     if (watch.updated > ago(600e3)) return json({ ok: true, message: `We just sent a confirm link to ${email}. Check your inbox and spam folder.` });
@@ -134,7 +135,13 @@ async function signup(request, env) {
       .bind(watch.id, watch.token, email, link, name, checkIn, checkOut, camping, length, "pending", now, now, ip).run();
   }
   const sent = await sendEmail(env, email, confirmationEmail(env, watch));
-  if (!sent.ok) return json({ error: sent.error }, 503);
+  if (!sent.ok) {
+    // Don't let a failed send count as sent: drop a new sign-up, or let a repeat one try again right away.
+    await (lastSent
+      ? env.DB.prepare("UPDATE watches SET updated = ? WHERE id = ?").bind(lastSent, watch.id)
+      : env.DB.prepare("DELETE FROM watches WHERE id = ?").bind(watch.id)).run();
+    return json({ error: sent.error }, 503);
+  }
   return json({ ok: true, message: `Almost done: we emailed a confirm link to ${email}. Tap it to start your alerts.` });
 }
 
@@ -303,7 +310,7 @@ async function sendEmail(env, to, { subject, text, html }, headers = {}) {
   }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "User-Agent": "CampSwoop/1.0" },
     body: JSON.stringify({ from: env.FROM, to: [to], reply_to: env.REPLY_TO, subject, text, html, headers }),
   });
   if (!response.ok) {

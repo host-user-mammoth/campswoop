@@ -6,6 +6,10 @@ compatibility_date = "2026-09-15"
 workers_dev = false
 routes = [{ pattern = "api.campswoop.com", custom_domain = true }]
 
+# Keep the Worker's console.log lines (Resend errors, limits) viewable in the Cloudflare dashboard.
+[observability]
+enabled = true
+
 [vars]
 SITE = "https://campswoop.com"
 API_URL = "https://api.campswoop.com"
