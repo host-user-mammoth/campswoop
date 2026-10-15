@@ -1,0 +1,23 @@
+{
+  "name": "CampSwoop",
+  "short_name": "CampSwoop",
+  "description": "Email alerts the moment a booked-up campsite opens for every night of your stay.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0a09",
+  "theme_color": "#0b0a09",
+  "categories": ["travel", "lifestyle", "utilities"],
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Start a watch", "url": "/#configure" },
+    { "name": "Campground map", "url": "/#map" }
+  ]
+}
