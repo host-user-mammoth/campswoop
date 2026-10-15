@@ -40,9 +40,14 @@ const navHeight = () => $("nav").offsetHeight;
 const panels = { watch: $("panel-watch"), map: $("panel-map") };
 const tabButtons = { watch: $("tab-watch"), map: $("tab-map") };
 
+// animate: a person switched tabs (slide the ink, fade the panel in, and add a history entry so the phone's
+// Back gesture returns to the other tab instead of leaving the site).
 function showTab(name, { scroll = true, animate = false } = {}) {
   if (!panels[name]) name = "watch";
   const changed = document.body.dataset.tab !== name;
+  const url = location.pathname + location.search + (name === "map" ? "#map" : "");
+  if (animate && changed) history.pushState({ tab: name }, "", url);
+  else history.replaceState({ tab: name }, "", url);
   for (const key of Object.keys(panels)) {
     const on = key === name;
     panels[key].hidden = !on;
@@ -52,7 +57,6 @@ function showTab(name, { scroll = true, animate = false } = {}) {
   // Hiding a panel restarts its CSS animations; the hero's entrance plays once per visit, not per tab switch.
   if (name !== "watch") $("hero").classList.add("played");
   document.body.dataset.tab = name;
-  history.replaceState(null, "", location.pathname + location.search + (name === "map" ? "#map" : ""));
   placeInk(animate && changed);
   updateNav();
   if (scroll) window.scrollTo({ top: 0, behavior: "auto" });
@@ -109,7 +113,12 @@ function goToConfigurator(focusDates = false, { instant = false } = {}) {
   setTimeout(() => target.focus({ preventScroll: true }), reduceMotion || instant ? 0 : 650);
 }
 
-addEventListener("hashchange", () => showTab(location.hash === "#map" ? "map" : "watch"));
+// Back and forward between the tabs. Other hashes (#configure from the skip link) are in-page anchors.
+const tabFromHash = () => (location.hash === "#map" ? "map" : "watch");
+addEventListener("popstate", () => showTab(tabFromHash(), { scroll: false }));
+addEventListener("hashchange", () => {
+  if ((location.hash === "#map" || location.hash === "") && document.body.dataset.tab !== tabFromHash()) showTab(tabFromHash());
+});
 addEventListener("resize", () => placeInk());
 document.fonts?.ready.then(() => placeInk());
 
@@ -119,6 +128,7 @@ function updateNav() {
 addEventListener("scroll", updateNav, { passive: true });
 
 // ---------------------------------------------------------------- Reveal on scroll
+document.documentElement.classList.add("reveal-on"); // sections hide only once something is here to reveal them
 const revealer = new IntersectionObserver(entries => {
   for (const entry of entries) {
     if (entry.isIntersecting) { entry.target.classList.add("in"); revealer.unobserve(entry.target); }
@@ -153,13 +163,23 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 15000);
 
+// The loop plays only while the hero is on screen, and anyone can stop it (WCAG 2.2.2).
+const heroPause = $("hero-pause");
+let heroPausedByVisitor = false;
 if (!reduceMotion && !saveData) {
   heroVideo.src = `assets/hero-${phase}.mp4`;
   heroVideo.preload = "auto";
   new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting && document.body.dataset.tab === "watch") heroVideo.play().catch(() => {});
+    if (entry.isIntersecting && document.body.dataset.tab === "watch" && !heroPausedByVisitor) heroVideo.play().catch(() => {});
     else heroVideo.pause();
   }).observe(hero);
+  heroVideo.addEventListener("playing", () => { heroPause.hidden = false; }, { once: true });
+  heroPause.addEventListener("click", () => {
+    heroPausedByVisitor = !heroPausedByVisitor;
+    if (heroPausedByVisitor) heroVideo.pause(); else heroVideo.play().catch(() => {});
+    heroPause.textContent = heroPausedByVisitor ? "Play" : "Pause";
+    heroPause.setAttribute("aria-label", `${heroPausedByVisitor ? "Play" : "Pause"} the background video`);
+  });
 }
 // Someone who turns on reduced motion mid-visit gets stillness right away.
 matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", event => {
@@ -172,10 +192,10 @@ matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", even
 // The page ships the current counts; refresh them from the map data so they never go stale.
 (window.requestIdleCallback || (fn => setTimeout(fn, 1200)))(async () => {
   try {
-    const data = await (await fetch("data/campgrounds.json")).json();
-    $("coverage-count").textContent = data.places.length.toLocaleString();
+    const places = await campgrounds();
+    $("coverage-count").textContent = places.length.toLocaleString();
     const counts = {};
-    for (const [system] of data.places) counts[system] = (counts[system] || 0) + 1;
+    for (const [system] of places) counts[system] = (counts[system] || 0) + 1;
     for (const cell of document.querySelectorAll("#systems [data-system]")) cell.textContent = (counts[cell.dataset.system] || 0).toLocaleString();
   } catch (error) { /* keep the static figures */ }
 });
@@ -216,7 +236,7 @@ let searchSeq = 0;
 $("q").addEventListener("input", () => {
   clearTimeout(searchTimer);
   const q = $("q").value.trim();
-  $("q-notice").hidden = true;
+  $("q-notice").textContent = "";
   if (/^https?:\/\/|\.(com|gov|org|ca|net)\//i.test(q)) return useLink(q);
   if (q.length < 3) { $("results").innerHTML = ""; return; }
   searchTimer = setTimeout(() => search(q), 280);
@@ -250,31 +270,73 @@ function useLink(text) {
   }
 }
 
+// The campgrounds CampSwoop can watch (the map's list): rows of [system, lng, lat, name, area, ref].
+const SYSTEM_NAMES = { r: "Recreation.gov", w: "Washington State Parks", b: "BC Parks", o: "Ontario Parks", p: "Parks Canada", f: "Firefly Reservations" };
+const CAMIS_HOSTS = { w: "washington.goingtocamp.com", b: "camping.bcparks.ca", o: "reservations.ontarioparks.ca", p: "reservation.pc.gc.ca" };
+let campgroundList;
+const campgrounds = () => (campgroundList ||= fetch("data/campgrounds.json").then(r => r.json()).then(data => data.places)
+  .catch(error => { campgroundList = null; throw error; }));
+// Keep in step with bookingLink() in map.js.
+function bookingLink([system, , , , , ref]) {
+  if (system === "r") return `https://www.recreation.gov/camping/campgrounds/${ref}`;
+  if (system === "f") return `https://app.fireflyreservations.com/reserve/property/${ref}`;
+  const [location, mapId] = String(ref).split("|");
+  return `https://${CAMIS_HOSTS[system]}/create-booking/results?resourceLocationId=${location}&mapId=${mapId}&searchTabGroupId=0&bookingCategoryId=0`;
+}
+
+// Search: every campground we can watch by name, from our own list at once; Recreation.gov's search then
+// adds its other matches (alternate names, first-come sites it can't book).
 async function search(q) {
   const seq = ++searchSeq;
+  const needle = q.toLowerCase().replace(/[.\s]+/g, " ").trim();
+  const items = [];
+  try {
+    // Best first: the name starts with what was typed, then a word in it does, then it's anywhere.
+    const rank = name => (name.startsWith(needle) ? 0 : (` ${name}`).includes(` ${needle}`) ? 1 : 2);
+    const matches = [];
+    for (const row of await campgrounds()) {
+      const name = row[3].toLowerCase().replace(/[.\s]+/g, " ");
+      if (name.includes(needle)) matches.push([rank(name), row[3].length, row]);
+    }
+    matches.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    for (const [, , row] of matches.slice(0, 6)) {
+      items.push({ name: row[3], where: `${row[4]} · ${SYSTEM_NAMES[row[0]]}`, url: bookingLink(row),
+                   noFilter: "wbop".includes(row[0]), id: row[0] === "r" ? String(row[5]) : null });
+    }
+  } catch (error) { /* our list didn't load; Recreation.gov's search still runs */ }
+  if (seq !== searchSeq) return;
+  showResults(items);
   try {
     const params = new URLSearchParams({ q, fq: "entity_type:campground", size: "8" });
     const data = await (await fetch(`${RECGOV_SEARCH}?${params}`)).json();
     if (seq !== searchSeq) return;
-    const results = data.results || [];
-    $("results").innerHTML = results.map((r, i) => {
+    const seen = new Set(items.map(item => item.id).filter(Boolean));
+    for (const r of data.results || []) {
+      if (seen.has(String(r.entity_id)) || items.length >= 8) continue;
       const where = [r.parent_name, r.addresses?.[0]?.state_code || r.state_code].filter(Boolean).join(", ");
-      const note = r.reservable === false ? " · first come, first served (can't be booked online)" : "";
-      return `<li><button type="button" data-i="${i}" ${r.reservable === false ? "disabled" : ""}>${escapeHtml(r.name)}<small>${escapeHtml(where + note)}</small></button></li>`;
-    }).join("");
-    $("results").querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
-      const r = results[button.dataset.i];
-      choose({ name: r.name, detail: [r.parent_name, r.addresses?.[0]?.state_code].filter(Boolean).join(", ") + " · Recreation.gov",
-               url: `https://www.recreation.gov/camping/campgrounds/${r.entity_id}` });
-    }));
-    if (!results.length) {
-      const find = `https://www.google.com/search?q=${encodeURIComponent(q + " campground reservations")}`;
-      notice($("q-notice"), `Not on Recreation.gov. Try the <button type="button" class="link" data-go="map">map</button>, or <a href="${find}" target="_blank" rel="noopener">find its booking page</a> and paste the link here.`);
+      items.push({ name: r.name, where: `${where} · Recreation.gov`, url: `https://www.recreation.gov/camping/campgrounds/${r.entity_id}`,
+                   closed: r.reservable === false });
     }
-  } catch (error) {
-    if (seq === searchSeq) notice($("q-notice"), "Search isn't working right now. Paste the campground's booking link instead.");
+    showResults(items);
+  } catch (error) { /* Recreation.gov's search is down; our own matches stand */ }
+  if (seq === searchSeq && !items.length) {
+    const find = `https://www.google.com/search?q=${encodeURIComponent(q + " campground reservations")}`;
+    notice($("q-notice"), `No campground we can watch matches that. Try the <button type="button" class="link" data-go="map">map</button>, or <a href="${find}" target="_blank" rel="noopener">find its booking page</a> and paste the link here.`);
   }
 }
+
+function showResults(items) {
+  $("results").innerHTML = items.map((item, i) => `<li><button type="button" data-i="${i}" ${item.closed ? "disabled" : ""}>${escapeHtml(item.name)}<small>${escapeHtml(item.where + (item.closed ? " · first come, first served (can't be booked online)" : ""))}</small></button></li>`).join("");
+  $("results").querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
+    const item = items[button.dataset.i];
+    choose({ name: item.name, detail: item.where, url: item.url, noFilter: !!item.noFilter });
+  }));
+}
+
+$("q").addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); $("results").querySelector("button:not(:disabled)")?.click(); }
+  if (event.key === "Escape") $("results").innerHTML = "";
+});
 
 async function lookupRecgov(url) {
   const id = url.match(/campgrounds\/(\d+)/);
@@ -291,10 +353,12 @@ async function lookupRecgov(url) {
 }
 
 function choose(place) {
+  const hadFocus = $("pick").contains(document.activeElement); // the block that held focus is about to hide
   state.place = place;
   showChosen();
   if (place.lookup) lookupRecgov(place.url);
   update();
+  if (hadFocus) $("in").focus({ preventScroll: true });
 }
 
 function showChosen() {
@@ -307,7 +371,8 @@ $("change").addEventListener("click", () => {
   state.place = null; showChosen(); $("q").value = ""; $("results").innerHTML = ""; $("q").focus(); update();
 });
 
-function notice(element, htmlText) { element.innerHTML = htmlText; element.hidden = false; }
+// Notices are always-present live regions, shown only while they hold text (.notice:empty is hidden).
+function notice(element, htmlText) { element.innerHTML = htmlText; }
 
 // ---------------------------------------------------------------- Step 2: dates
 const today = localToday();
@@ -354,6 +419,7 @@ function campingText() {
 // ---------------------------------------------------------------- Step 4: email, summary, submit
 const validEmail = text => /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(text.trim());
 let sending = false;
+let sentKey = ""; // the last sign-up that went through
 
 function signup() {
   const s = stay();
@@ -383,8 +449,7 @@ function setSummary(id, value, empty) {
 
 function update() {
   const s = stay();
-  $("date-notice").hidden = !s.error;
-  if (s.error) $("date-notice").textContent = s.error;
+  if ($("date-notice").textContent !== (s.error || "")) $("date-notice").textContent = s.error || "";
   $("nights").textContent = s.start
     ? `${s.nights} night${s.nights === 1 ? "" : "s"}: ${dayName(s.start)} → ${dayName(s.end)}. One site must be free for every night.`
     : `One site must be free for every night. Stays up to ${MAX_NIGHTS} nights.`;
@@ -403,9 +468,13 @@ function update() {
 
   const data = signup();
   $("share").disabled = !data;
-  $("signup-button").disabled = !data || !validEmail(email) || sending;
+  // After a sign-up the button rests until something changes, so the same watch isn't sent twice.
+  const alreadySent = !!data && sentKey === JSON.stringify(data.body);
+  $("signup-button").disabled = !data || !validEmail(email) || sending || alreadySent;
+  $("signup-button").textContent = sending ? "Sending…" : alreadySent ? "Sent · check your inbox" : "Start watching";
   // Say what's missing rather than leaving a silent, disabled button.
-  const missing = [!state.place && "a campground", !s.start && "your dates", !validEmail(email) && "your email"].filter(Boolean);
+  const emailNeed = !email ? "your email" : !validEmail(email) ? "a complete email address" : "";
+  const missing = [!state.place && "a campground", !s.start && "your dates", emailNeed].filter(Boolean);
   $("needs").textContent = missing.length && !sending
     ? `Still needed: ${missing.length < 2 ? missing[0] : `${missing.slice(0, -1).join(", ")} and ${missing.at(-1)}`}.` : "";
 }
@@ -416,7 +485,6 @@ $("form").addEventListener("submit", async event => {
   const data = signup();
   if (!data || !validEmail($("email").value) || sending) return;
   sending = true;
-  $("signup-button").textContent = "Sending…";
   update();
   let result;
   try {
@@ -427,11 +495,12 @@ $("form").addEventListener("submit", async event => {
     result = { error: "We couldn't reach CampSwoop. Check your connection and try again." };
   }
   sending = false;
-  $("signup-button").textContent = "Start watching";
+  if (result.ok) sentKey = JSON.stringify(data.body);
   update();
+  // Shown before the text goes in, so screen readers announce it.
   $("result").className = `result ${result.ok ? "ok" : "error"}`;
-  $("result").textContent = result.ok ? `${result.message} Not there? Check your spam or promotions folder.` : result.error;
   $("result").hidden = false;
+  $("result").textContent = result.ok ? `${result.message} Not there? Check your spam or promotions folder.` : result.error;
 });
 
 // ---------------------------------------------------------------- Sharing and pre-filled links

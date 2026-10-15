@@ -33,7 +33,7 @@
 </script>
 </head>
 <body data-tab="watch">
-<a class="skip" href="#configure">Skip to sign-up</a>
+<a class="skip" href="#configure" data-go="configure">Skip to sign-up</a>
 
 <header class="nav" id="nav">
   <a class="brand" href="#" data-go="watch" aria-label="CampSwoop home">
@@ -55,6 +55,7 @@
   <section class="hero" id="hero" data-phase="night" aria-label="Introduction">
     <video class="hero-media" id="hero-video" muted loop playsinline preload="none" poster="assets/hero-night.webp" aria-hidden="true"></video>
     <div class="hero-shade" aria-hidden="true"></div>
+    <button type="button" class="hero-pause" id="hero-pause" aria-label="Pause the background video" hidden>Pause</button>
     <div class="hero-inner">
       <p class="hero-clock" id="hero-clock">Campsite cancellation alerts</p>
       <h1 class="hero-title">
@@ -97,8 +98,8 @@
             <label for="q" class="field-label">Name or booking link</label>
             <input class="field" type="search" id="q" autocomplete="off" enterkeyhint="search" placeholder="Upper Pines, or paste a booking link" aria-describedby="q-hint" aria-controls="results">
             <ul class="results" id="results" aria-live="polite"></ul>
-            <p class="hint" id="q-hint">Search finds Recreation.gov campgrounds. For Parks Canada, BC Parks, Ontario Parks, Washington State Parks or Firefly, paste the booking link, or <button type="button" class="link" data-go="map">find it on the map</button>.</p>
-            <div id="q-notice" class="notice" hidden></div>
+            <p class="hint" id="q-hint">Search all 4,767 campgrounds we can watch, on Recreation.gov, Parks Canada, BC Parks, Ontario Parks and Washington State Parks. For a Firefly campground, paste its booking link, or <button type="button" class="link" data-go="map">find it on the map</button>.</p>
+            <div id="q-notice" class="notice" role="status"></div>
           </div>
           <div id="chosen" class="chosen" hidden>
             <div><strong id="chosen-name"></strong><span id="chosen-detail"></span></div>
@@ -113,7 +114,7 @@
             <div><label for="out" class="field-label">Check out</label><input class="field" type="date" id="out"></div>
           </div>
           <p class="hint" id="nights">One site must be free for every night. Stays up to 14 nights.</p>
-          <div id="date-notice" class="notice" hidden></div>
+          <div id="date-notice" class="notice" role="status"></div>
         </fieldset>
 
         <fieldset class="step" id="step-3">

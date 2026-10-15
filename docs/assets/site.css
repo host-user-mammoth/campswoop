@@ -36,7 +36,11 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+html {
+  -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
+  /* Anything scrolled or tabbed to lands below the fixed nav, never under it. */
+  scroll-padding-top: calc(var(--nav-h) + 16px); scroll-padding-bottom: 24px;
+}
 :root:has(body[data-tab="map"]) { overscroll-behavior: none; }
 body {
   margin: 0;
@@ -70,7 +74,7 @@ button, .btn, .nav-cta, .chips label, .toggle, summary {
   position: fixed; left: 16px; top: -48px; z-index: 50; background: var(--ember); color: var(--on-ember);
   padding: 10px 14px; font-weight: 700; text-decoration: none; transition: top 0.2s;
 }
-.skip:focus { top: calc(12px + var(--safe-top)); }
+.skip:focus { top: calc(var(--nav-h) + 8px); }
 
 /* ---------- Type ---------- */
 /* Headlines: the serif, title case, two lines at most. */
@@ -197,6 +201,12 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 .js:not(.type-ready) .hero :is(.hero-clock, .hero-title .line > span, .rise) { animation-play-state: paused; }
 /* Coming back to the Watch tab shows the hero as it was left, without replaying its entrance. */
 .hero.played :is(.hero-media, .hero-clock, .hero-title .line > span, .rise) { animation: none; }
+.hero-pause {
+  position: absolute; z-index: 2; top: calc(var(--nav-h) + 16px); right: var(--inset-x); min-height: 44px; padding: 0 14px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2);
+  background: rgba(11, 10, 9, 0.55); border: 1px solid var(--line); border-radius: 2px; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
 .hero-copy { max-width: 500px; font-size: clamp(16px, 1.3vw, 19px); color: var(--ink-2); margin-bottom: 32px; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .rise { animation: rise 0.8s var(--ease) both; }
@@ -244,8 +254,8 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 }
 .field::placeholder { color: var(--ink-3); }
 .field:focus { outline: none; border-bottom-color: var(--ember); box-shadow: 0 1px 0 0 var(--ember); }
-.field[type="search"]::-webkit-search-cancel-button { filter: invert(1) opacity(0.6); }
-.field[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85) sepia(0.3); cursor: pointer; }
+/* color-scheme: dark already draws these light; inverting them made them vanish. */
+.field[type="search"]::-webkit-search-cancel-button, .field[type="date"]::-webkit-calendar-picker-indicator { filter: none; opacity: 0.8; cursor: pointer; }
 /* iOS draws date inputs centred, and collapses an empty one; keep them left-aligned and full height. */
 .field[type="date"] { -webkit-appearance: none; appearance: none; min-height: 52px; min-width: 0; }
 .field[type="date"]::-webkit-date-and-time-value { text-align: left; }
@@ -274,6 +284,7 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
   border: 1px solid rgba(255, 74, 28, 0.45); background: var(--ember-soft); color: var(--ink);
 }
 .notice a { color: inherit; }
+.notice:empty { display: none; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips label {
@@ -298,8 +309,10 @@ body[data-tab="map"] .nav-cta { visibility: hidden; }
 .summary-list dd.flash { animation: flash 0.9s var(--ease); }
 .summary-card .fine { margin-top: 14px; }
 .result { margin-top: 16px; padding: 14px 16px; font-size: 15px; border: 1px solid var(--line-strong); animation: settle 0.24s var(--ease-out) both; }
-.result.ok { border-color: rgba(255, 74, 28, 0.6); background: var(--ember-soft); color: var(--ink); }
-.result.error { border-color: rgba(255, 74, 28, 0.45); color: var(--ink); }
+/* Success is calm and neutral; ember borders mean something needs fixing. */
+.result.ok { border-color: var(--edge); background: var(--surface-2); color: var(--ink); }
+.result.ok::before { content: "✓"; color: var(--ember-hi); font-weight: 700; margin-right: 8px; }
+.result.error { border-color: rgba(255, 74, 28, 0.6); background: var(--ember-soft); color: var(--ink); }
 .share-row { margin-top: 14px; font-size: 14px; }
 .preview { display: grid; gap: 10px; }
 .preview-frame { position: relative; border: 1px solid var(--line); background: #0b0a09; aspect-ratio: 1; overflow: hidden; }
@@ -479,6 +492,8 @@ body[data-tab="map"] .footer { display: none; }
 .pop-kicker.bone { color: var(--ink-3); }
 .pop-body h3 { font-size: 18px; line-height: 1.25; font-weight: 700; outline: none; }
 .pop-meta { color: var(--ink-2); font-size: 13px; }
+.pop-local { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; color: var(--ink-2); }
+.pop-local:empty { display: none; }
 .pop-sun { color: var(--ink-2); font-size: 13px; line-height: 1.5; }
 .pop-sun::before { content: ""; display: inline-block; vertical-align: middle; margin: -2px 8px 0 0; width: 8px; height: 8px; border-radius: 50%; background: #ffb357; }
 .pop-sun.night::before { background: var(--ink-2); }
@@ -490,8 +505,17 @@ body[data-tab="map"] .footer { display: none; }
 .map-detail .pop-photo { height: 140px; }
 .map-side.detail .layers, .map-side.detail .map-list { display: none; }
 .pop-actions { display: grid; gap: 8px; margin-top: 6px; }
-.pop-actions .btn { min-height: 44px; font-size: 12px; }
+.pop-actions .btn { min-height: 44px; font-size: 12px; padding: 0 16px; letter-spacing: 0.12em; }
 .pop-actions .link { font-size: 13px; justify-self: start; }
+
+/* Touch targets: 44px for everything a finger has to hit. */
+#change, #share, .footer-row .link, .pop-actions .link, .map-detail .back { min-height: 44px; display: inline-flex; align-items: center; }
+.brand, .toggle, .replay { min-height: 44px; }
+.footer-row nav { gap: 4px; }
+.footer-row nav .link { padding: 0 10px; }
+.mapview .maplibregl-popup-close-button { width: 44px; height: 44px; }
+.map-results button, .map-list button { min-height: 44px; }
+@media (pointer: coarse) { .mapview .maplibregl-ctrl-group button { width: 44px; height: 44px; } }
 
 /* ---------- Hover ----------
    Only where a mouse can hover: on touch screens a tapped element would keep its hover look. */
@@ -506,7 +530,7 @@ body[data-tab="map"] .footer { display: none; }
   .results button:not(:disabled):hover { background: var(--surface-2); color: var(--ember-hi); }
   .chips label:hover { border-color: rgba(244, 239, 230, 0.6); }
   .chips label:has(input:checked):hover { border-color: var(--ember); }
-  .replay:hover { border-color: var(--ember); color: var(--ember-hi); }
+  .replay:hover, .hero-pause:hover { border-color: var(--ember); color: var(--ember-hi); }
   .faq-list summary:hover { color: var(--ember-hi); }
   .globe-link:hover img { transform: scale(1.03); }
   .map-results button:hover, .map-list button:hover { background: rgba(244, 239, 230, 0.06); color: var(--ember-hi); }
@@ -515,8 +539,9 @@ body[data-tab="map"] .footer { display: none; }
 }
 
 /* ---------- Motion ---------- */
-.js .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
-.js .reveal.in { opacity: 1; transform: none; }
+/* app.js sets .reveal-on just before it starts watching, so if the script never runs nothing stays hidden. */
+.reveal-on .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.7s var(--ease), transform 0.7s var(--ease); }
+.reveal-on .reveal.in { opacity: 1; transform: none; }
 .how-list li.reveal:nth-child(2), .step.reveal:nth-child(2) { transition-delay: 0.07s; }
 .how-list li.reveal:nth-child(3), .step.reveal:nth-child(3) { transition-delay: 0.14s; }
 .step.reveal:nth-child(4) { transition-delay: 0.21s; }
@@ -534,7 +559,7 @@ body[data-tab="map"] .footer { display: none; }
     animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
     animation-play-state: running !important; transition-delay: 0s !important;
   }
-  .js .reveal { opacity: 1; transform: none; transition: none; }
+  .reveal-on .reveal { opacity: 1; transform: none; transition: none; }
   .btn, .chips label, .nav-cta, .locate, .replay, .tab-ink, .map-side, .map-detail, .globe-link img { transition-property: opacity, color, background-color, border-color; }
   .btn:active, .chips label:active, .nav-cta:active, .locate:active, .replay:active { transform: none; }
 }
@@ -579,7 +604,8 @@ body[data-tab="map"] .footer { display: none; }
   .row { gap: 20px; }
   .summary { grid-template-columns: minmax(0, 1fr); }
   .summary-card { padding: 22px 18px; }
-  .summary-list > div { grid-template-columns: 96px 1fr; }
+  .summary-list > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .summary-list dt { padding-top: 0; }
   .how-list { grid-template-columns: minmax(0, 1fr); }
   .how-list li, .how-list li + li { padding: 24px 0 30px; border-left: 0; }
   .how-when { margin-bottom: 12px; }
@@ -587,9 +613,10 @@ body[data-tab="map"] .footer { display: none; }
   .facts { max-width: none; }
   .faq-list summary { font-size: 17px; }
 }
-/* The map's bottom sheet, for phones in either orientation: a fixed-height panel that slides down to show
-   only its search box and handle (--peek, measured in map.js), and that a thumb can drag. */
-@media (max-width: 760px), (max-height: 500px) and (orientation: landscape) and (max-width: 1000px) {
+/* The map's bottom sheet, for phones in either orientation and tablets held upright: a fixed-height panel
+   that slides down to show only its search box and handle (--peek, measured in map.js), and that a thumb
+   can drag. Keep the query in step with `phone` in map.js. */
+@media (max-width: 760px), (max-height: 500px) and (orientation: landscape) and (max-width: 1000px), (orientation: portrait) and (max-width: 1100px) {
   .mapview { overflow: clip; }
   .map-side {
     top: auto; bottom: 0; left: max(8px, var(--safe-left)); right: max(8px, var(--safe-right)); width: auto;
@@ -605,7 +632,11 @@ body[data-tab="map"] .footer { display: none; }
   .sheet-handle .chev { display: block; width: 10px; height: 10px; border-right: 1.5px solid var(--ink-2); border-bottom: 1.5px solid var(--ink-2); transform: rotate(-135deg); transition: transform 0.3s var(--ease-out); }
   .sheet-handle[aria-expanded="true"] .chev { transform: rotate(45deg); }
   .map-status { top: calc(var(--nav-h) + 100px); }
-  .map-clock { top: calc(var(--nav-h) + 8px); right: max(8px, var(--safe-right)); padding: 8px 10px; font-size: 10px; }
+  .map-clock { top: calc(var(--nav-h) + 8px); right: max(8px, var(--safe-right)); padding: 8px 10px; }
+  /* The three layer switches in one row, so the open sheet keeps room for the list. */
+  .layers { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .toggle { font-size: 13px; gap: 8px; }
+  .toggle small { display: none; }
   .locate { bottom: auto; top: calc(var(--nav-h) + 52px); right: max(8px, var(--safe-right)); }
   /* Pinch replaces the zoom buttons, but the map credit (OpenStreetMap's licence) must stay: move it top-left. */
   .mapview .maplibregl-ctrl-bottom-right {
@@ -614,7 +645,11 @@ body[data-tab="map"] .footer { display: none; }
   .mapview .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { display: none; }
   .mapview .maplibregl-ctrl-bottom-right .maplibregl-ctrl { float: left; margin: 0; }
 }
-@media (max-width: 380px) {
+/* Upright tablets: the sheet is a centred card, not the full width of the screen. */
+@media (orientation: portrait) and (min-width: 761px) and (max-width: 1100px) {
+  .map-side { left: 0; right: 0; margin: 0 auto; width: min(560px, calc(100% - 24px)); height: 55%; }
+}
+@media (max-width: 350px) {
   .brand span { display: none; }
 }
 @media (max-width: 359px) {
@@ -634,6 +669,6 @@ body[data-tab="map"] .footer { display: none; }
   .map-sheet-landscape { display: none; }
 }
 @media print {
-  .js .reveal { opacity: 1; transform: none; }
+  .reveal-on .reveal { opacity: 1; transform: none; }
   .nav { position: static; }
 }

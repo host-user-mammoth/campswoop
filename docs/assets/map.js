@@ -28,8 +28,8 @@ let popup;
 let started = false;
 let spinning = false;
 const errors = [];
-// Phones in either orientation get the bottom sheet (kept in step with the sheet rules in site.css).
-const phone = matchMedia("(max-width: 760px), (max-height: 500px) and (orientation: landscape) and (max-width: 1000px)");
+// Phones in either orientation, and upright tablets, get the bottom sheet (in step with the sheet rules in site.css).
+const phone = matchMedia("(max-width: 760px), (max-height: 500px) and (orientation: landscape) and (max-width: 1000px), (orientation: portrait) and (max-width: 1100px)");
 window.CampSwoopMap = { get map() { return map; }, errors, stopSpin() { spinning = false; } }; // for support and testing
 
 export async function open(api) {
@@ -79,10 +79,12 @@ function build() {
   const median = values => { const sorted = [...values].sort((a, b) => a - b); return sorted[Math.floor(sorted.length / 2)]; };
   const center = places.length ? [median(places.map(p => p.lng)), median(places.map(p => p.lat))] : [-98, 40];
   map = new maplibregl.Map({
-    container: "map", style: STYLE, center, zoom: phone.matches ? 0.9 : 1.6,
+    container: "map", style: STYLE, center, zoom: startZoom(),
     minZoom: 0.6, maxZoom: 17, attributionControl: false, dragRotate: false, pitchWithRotate: false,
     pixelRatio: Math.min(window.devicePixelRatio || 1, 2), // a 3x phone draws 44% fewer pixels, with no visible loss
   });
+  map.setPadding(basePadding());
+  phone.addEventListener("change", () => map.setPadding(basePadding()));
   map.touchZoomRotate.disableRotation();
   map.keyboard.disableRotation();
   // The tiles carry their own attribution (OpenFreeMap, OpenMapTiles, OpenStreetMap); ATTRIBUTION is the fallback.
@@ -95,7 +97,7 @@ function build() {
     map.setSky({
       "sky-color": "#0b0a09", "horizon-color": "#3d2416", "fog-color": "#0b0a09",
       "sky-horizon-blend": 0.5, "horizon-fog-blend": 0.6, "fog-ground-blend": 0.4,
-      "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 1, 5, 1, 7, 0],
+      "atmosphere-blend": ["interpolate", ["linear"], ["zoom"], 0, 0.55, 5, 0.55, 7, 0],
     });
     addLayers();
   });
@@ -108,7 +110,7 @@ function build() {
     setInterval(updateNight, 60000);
   });
   // Re-measure whenever the panel's size changes: tab switches, phone rotation, the keyboard opening.
-  new ResizeObserver(() => map.resize()).observe($("map"));
+  new ResizeObserver(() => { map.resize(); if (!phone.matches) map.setPadding(basePadding()); }).observe($("map"));
   // While the globe turns by itself the list stays put, so a row can't change under a finger.
   map.on("moveend", debounce(() => { if (!spinning) updateList(); }, 150));
   map.on("idle", debounce(() => { if (!spinning) updateList(); }, 100)); // late tiles settle the "in view" counts
@@ -150,7 +152,7 @@ function addLayers() {
   // Night: the part of the globe where the sun is down right now, with a warm line where it's rising or setting.
   map.addSource("night", { type: "geojson", data: nightGeoJson(new Date()) });
   map.addLayer({ id: "night-fill", type: "fill", source: "night", filter: ["==", ["geometry-type"], "Polygon"],
-                 paint: { "fill-color": "#000000", "fill-opacity": 0.42 } }, firstLabel);
+                 paint: { "fill-color": "#000000", "fill-opacity": 0.55 } }, firstLabel);
   map.addLayer({ id: "night-edge", type: "line", source: "night", filter: ["==", ["geometry-type"], "LineString"],
                  paint: { "line-color": "#ff9a5a", "line-opacity": 0.4, "line-width": 1.4, "line-blur": 1.2 } }, firstLabel);
 
@@ -173,7 +175,7 @@ function addLayers() {
   });
   const clusterRadius = ["step", ["get", "point_count"], 13, 20, 16, 100, 21, 500, 27];
   map.addLayer({ id: "watch-glow", type: "circle", source: "watch",
-    paint: { "circle-color": EMBER, "circle-blur": 1, "circle-opacity": 0.35,
+    paint: { "circle-color": EMBER, "circle-blur": 1, "circle-opacity": 0.18,
              "circle-radius": ["case", ["has", "point_count"], ["*", clusterRadius, 1.9], 11] } });
   map.addLayer({ id: "watch-clusters", type: "circle", source: "watch", filter: ["has", "point_count"],
     paint: { "circle-color": EMBER, "circle-radius": clusterRadius, "circle-stroke-width": 1.5, "circle-stroke-color": "#0b0a09" } });
@@ -182,7 +184,9 @@ function addLayers() {
     paint: { "text-color": "#170a05" } });
   map.addLayer({ id: "watch-points", type: "circle", source: "watch", filter: ["!", ["has", "point_count"]],
     paint: { "circle-color": EMBER, "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3.5, 9, 6, 14, 8],
-             "circle-stroke-width": 1.5, "circle-stroke-color": "#0b0a09" } });
+             // the campground that's open in a popup or the sheet gets a bone ring
+             "circle-stroke-width": ["case", ["boolean", ["feature-state", "selected"], false], 3, 1.5],
+             "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], BONE, "#0b0a09"] } });
   map.addLayer({ id: "watch-labels", type: "symbol", source: "watch", filter: ["!", ["has", "point_count"]], minzoom: 8,
     layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-offset": [0, 1.25], "text-anchor": "top",
               "text-max-width": 9, "text-optional": true },
@@ -204,12 +208,32 @@ function addLayers() {
   });
 }
 
+// The free part of the map: on desktop the side panel covers the left edge, so the camera centres to its right.
+function basePadding() {
+  if (phone.matches) return { top: 0, bottom: 0, left: 0, right: 0 };
+  return { top: 0, bottom: 0, right: 0, left: $("map-side").offsetWidth + 32 };
+}
+
+// A globe that fills about 80% of the free area (it's about 171px across at zoom 0).
+function startZoom() {
+  const box = $("map").getBoundingClientRect();
+  const pad = basePadding();
+  const free = Math.min(box.width - pad.left - pad.right, box.height - (phone.matches ? 120 : 0));
+  return free > 0 ? Math.min(3, Math.max(0.6, Math.log2(free * 0.8 / 171))) : 1.4;
+}
+
 // On phones the open sheet covers the lower part of the map, so frame the target above it.
 function cameraPadding() {
-  if (!phone.matches) return 0;
+  if (!phone.matches) return basePadding();
   const sheet = $("map-side");
   const covered = sheet.classList.contains("open") ? sheet.offsetHeight : peekHeight(sheet);
   return { top: 90, bottom: covered + 32, left: 0, right: 0 };
+}
+
+// Fitting a region: the camera padding plus a margin on every side.
+function fitPadding() {
+  const p = cameraPadding();
+  return { top: p.top + 60, bottom: p.bottom + 60, left: p.left + 60, right: p.right + 60 };
 }
 
 // How much of the closed sheet shows: the search box and the handle, above the home indicator.
@@ -269,12 +293,24 @@ function openPopup(lngLat, element) {
   }
   popup = new maplibregl.Popup({ offset: 14, maxWidth: "320px", focusAfterOpen: true })
     .setLngLat(lngLat).setDOMContent(element).addTo(map);
+  const opened = popup;
+  opened.on("close", () => { if (popup === opened) select(null); });
 }
 
 function closeDetail() {
   $("map-detail").hidden = true;
   $("map-detail").replaceChildren();
   $("map-side").classList.remove("detail");
+  select(null);
+}
+
+// The campground that's open gets a bone ring on its dot.
+let selectedId = null;
+function select(id) {
+  if (!map?.getSource("watch")) return;
+  if (selectedId !== null) map.setFeatureState({ source: "watch", id: selectedId }, { selected: false });
+  selectedId = id;
+  if (id !== null) map.setFeatureState({ source: "watch", id }, { selected: true });
 }
 
 // fly: from a list or search (move there); tapped: a dot on the map (on phones, keep it above the sheet).
@@ -285,7 +321,7 @@ function showPlace(p, fly = false, tapped = false) {
     <div class="pop-body">
       <p class="pop-kicker">${esc(SYSTEMS[p.s])}</p>
       <h3>${esc(p.name)}</h3>
-      <p class="pop-meta">${esc(p.area)}</p>
+      <p class="pop-meta">${esc(p.area)}<span data-local-now></span></p>
       ${sunHtml(p.lat, p.lng)}
       <div class="pop-actions">
         <button class="btn btn-ember" type="button" data-watch>Watch this campground</button>
@@ -298,7 +334,9 @@ function showPlace(p, fly = false, tapped = false) {
     hooks.watchFromMap({ name: p.name, detail: `${p.area} · ${SYSTEMS[p.s]}`, url: bookingLink(p), noFilter: "wbop".includes(p.s) });
   });
   if (p.s === "r") loadPhoto(p.ref, element.querySelector(".pop-photo"));
+  localTimes(element, p.lat, p.lng);
   openPopup([p.lng, p.lat], element);
+  select(p.i);
   // Framed after the sheet opens, so its real height is known.
   if (fly) move({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 10) });
   else if (tapped && phone.matches) map.easeTo({ center: [p.lng, p.lat], padding: cameraPadding(), duration: hooks.reduceMotion ? 0 : 450 });
@@ -326,7 +364,7 @@ function showOsm(feature, lngLat) {
   element.innerHTML = `
     <div class="pop-body">
       <p class="pop-kicker bone">OpenStreetMap campsite</p>
-      <h3>${esc(name)}</h3>
+      <h3>${esc(name)}<span class="pop-local" data-local-now></span></h3>
       ${sunHtml(lat, lng)}
       <p class="pop-meta">CampSwoop can't watch this one yet. If it books through Recreation.gov, Firefly or GoingToCamp, paste its booking link on the Watch tab.</p>
       <div class="pop-actions">
@@ -334,6 +372,7 @@ function showOsm(feature, lngLat) {
         <a class="link" href="${esc(osm)}" target="_blank" rel="noopener">View on OpenStreetMap ↗</a>
       </div>
     </div>`;
+  localTimes(element, lat, lng);
   openPopup([lng, lat], element);
 }
 
@@ -385,11 +424,44 @@ function sunHtml(lat, lng) {
     if ((sunAltitude(new Date(now + m * 60000), lat, lng) > -0.833) !== up) { minutes = m; break; }
   }
   if (minutes === null) return `<p class="pop-sun${up ? "" : " night"}">${up ? "Midnight sun there right now" : "Polar night there right now"}</p>`;
-  const at = new Date(now + minutes * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const when = now + minutes * 60000;
+  const at = new Date(when).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const span = minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60 ? `${minutes % 60} min` : ""}`.trim();
   return up
-    ? `<p class="pop-sun">Daylight there · sun sets in ${span} <span class="fine">(${at} your time)</span></p>`
-    : `<p class="pop-sun night">Night there · sun rises in ${span} <span class="fine">(${at} your time)</span></p>`;
+    ? `<p class="pop-sun">Daylight there · sun sets in ${span} <span class="fine" data-sun-at="${when}">(${at} your time)</span></p>`
+    : `<p class="pop-sun night">Night there · sun rises in ${span} <span class="fine" data-sun-at="${when}">(${at} your time)</span></p>`;
+}
+
+// The campground's own time zone (from Open-Meteo, free and keyless), so a popup can say what time it is
+// there and when the sun moves in both its time and yours. Without it, the popup keeps "your time" only.
+const zones = new Map();
+function zoneAt(lat, lng) {
+  const key = `${lat.toFixed(1)},${lng.toFixed(1)}`;
+  if (!zones.has(key)) {
+    const params = new URLSearchParams({ latitude: lat.toFixed(3), longitude: lng.toFixed(3), timezone: "auto", forecast_days: "1" });
+    zones.set(key, fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal: AbortSignal.timeout?.(5000) })
+      .then(r => r.json()).then(data => data.timezone || null).catch(() => { zones.delete(key); return null; }));
+  }
+  return zones.get(key);
+}
+
+async function localTimes(element, lat, lng) {
+  const zone = await zoneAt(lat, lng);
+  const mine = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (!zone) return;
+  const time = (date, timeZone) => {
+    try { return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone, timeZoneName: "short" }); }
+    catch (error) { return null; } // an unknown zone name
+  };
+  const nowThere = time(new Date(), zone);
+  if (!nowThere) return;
+  const now = element.querySelector("[data-local-now]");
+  if (now) now.textContent = now.classList.contains("pop-local") ? `${nowThere} there now` : ` · ${nowThere} there`;
+  const sun = element.querySelector("[data-sun-at]");
+  if (sun && zone !== mine) {
+    const at = new Date(Number(sun.dataset.sunAt));
+    sun.textContent = `(${time(at, zone)} there, ${time(at, mine)} your time)`;
+  }
 }
 
 function updateClock() {
@@ -507,7 +579,7 @@ function wireUi() {
     if (own.length === 1) return move({ center: [own[0].lng, own[0].lat], zoom: 11 });
     const lngs = own.map(p => p.lng), lats = own.map(p => p.lat);
     map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-                  { padding: Object.assign({ top: 60, bottom: 60, left: 60, right: 60 }, cameraPadding() || {}),
+                  { padding: fitPadding(),
                     maxZoom: 8, duration: hooks.reduceMotion ? 0 : 1400 });
   });
   $("layer-watch").addEventListener("change", event => {
@@ -552,7 +624,7 @@ function wireUi() {
     if (phone.matches) setSheet(false); // a place: show the map there
     const [w, s, e, n] = (button.dataset.extent || "").split(",").map(Number);
     if (button.dataset.extent && [w, s, e, n].every(Number.isFinite)) {
-      map.fitBounds([[w, s], [e, n]], { padding: Object.assign({ top: 60, bottom: 60, left: 60, right: 60 }, cameraPadding() || {}),
+      map.fitBounds([[w, s], [e, n]], { padding: fitPadding(),
                                         maxZoom: 12, duration: hooks.reduceMotion ? 0 : 1600 });
     } else {
       move({ center: button.dataset.center.split(",").map(Number), zoom: 10 });
