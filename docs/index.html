@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>CampSwoop · Campsite cancellation alerts</title>
-<meta name="description" content="Booked solid? CampSwoop emails you the moment a campsite opens for every night of your stay. Free.">
+<meta name="description" content="Booked solid? CampSwoop checks your campground every 5 minutes and emails you when a site opens for every night of your stay. Free, no account.">
 <meta name="theme-color" content="#0b0a09">
 <meta name="color-scheme" content="dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,13 +15,22 @@
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <script>document.documentElement.classList.add("js")</script>
 <meta property="og:title" content="CampSwoop · Campsite cancellation alerts">
-<meta property="og:description" content="Pick a campground and your dates. The moment a site opens for every night, we email you a link to book it. Free.">
+<meta property="og:description" content="Pick a campground and your dates. CampSwoop checks every 5 minutes and emails you when one site is free for every night. Free.">
 <meta property="og:image" content="https://campswoop.com/assets/hero-poster.jpg">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Chivo+Mono:wght@400..500&family=Noto+Serif+Display:wdth,wght@75..90,400&display=swap">
 <link rel="stylesheet" href="assets/site.css">
+<script>
+// The hero waits for its fonts (700 ms at most) so the title can't re-break halfway through its entrance.
+(() => {
+  const ready = () => document.documentElement.classList.add("type-ready");
+  if (!document.fonts) return ready();
+  Promise.race([Promise.all([document.fonts.load('400 1em "Noto Serif Display"'), document.fonts.load("800 1em Archivo")]),
+                new Promise(done => setTimeout(done, 700))]).then(ready, ready);
+})();
+</script>
 </head>
 <body data-tab="watch">
 <a class="skip" href="#configure">Skip to sign-up</a>
@@ -32,9 +41,9 @@
     <span>CampSwoop</span>
   </a>
   <div class="tabs" role="tablist" aria-label="Sections">
+    <span class="tab-ink" aria-hidden="true"></span>
     <button class="tab" role="tab" id="tab-watch" aria-controls="panel-watch" aria-selected="true">Watch</button>
     <button class="tab" role="tab" id="tab-map" aria-controls="panel-map" aria-selected="false" tabindex="-1">Map</button>
-    <span class="tab-ink" aria-hidden="true"></span>
   </div>
   <a class="nav-cta" href="#configure" data-go="configure">Start a watch</a>
 </header>
@@ -47,39 +56,48 @@
     <video class="hero-media" id="hero-video" muted loop playsinline preload="none" poster="assets/hero-night.webp" aria-hidden="true"></video>
     <div class="hero-shade" aria-hidden="true"></div>
     <div class="hero-inner">
-      <p class="kicker hero-clock" id="hero-clock">Campsite cancellation alerts</p>
+      <p class="hero-clock" id="hero-clock">Campsite cancellation alerts</p>
       <h1 class="hero-title">
-        <span class="line"><span>Booked solid?</span></span>
-        <span class="line"><span>We swoop <em>in.</em></span></span>
+        <span class="line"><span>Booked Solid?</span></span>
+        <span class="line"><span>We Swoop In.</span></span>
       </h1>
-      <p class="hero-copy rise">Pick a campground and your dates. The moment one site opens for every night of your stay, we email you a link to book it.</p>
+      <p class="hero-copy rise">Pick a campground and your dates. We check it every 5 minutes and email you when one site is free for every night of your stay.</p>
       <div class="hero-actions rise">
         <a class="btn btn-ember" href="#configure" data-go="configure">Start a watch <span class="arrow" aria-hidden="true">→</span></a>
-        <button class="btn btn-ghost" type="button" data-go="map">Explore the map</button>
+        <button class="btn btn-ghost" type="button" data-go="map">Open the map</button>
       </div>
     </div>
     <dl class="specs rise" aria-label="At a glance">
-      <div><dt>Coverage</dt><dd><span id="coverage-count">4,700+</span> campgrounds</dd></div>
-      <div><dt>Checks</dt><dd>Every 5 min</dd></div>
-      <div><dt>Price</dt><dd>Free</dd></div>
+      <div>
+        <dt><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5h13M3 13.5 8 3l5 10.5M8 9.5l-1.6 4M8 9.5l1.6 4"/></svg>Campgrounds</dt>
+        <dd id="coverage-count">4,767</dd>
+      </div>
+      <div>
+        <dt><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 3.1v1.1M8 8l2-3.46"/></svg>Checks every</dt>
+        <dd>5<span class="unit">min</span></dd>
+      </div>
+      <div>
+        <dt><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8.6V2.75c0-.41.34-.75.75-.75H8.6l5.4 5.4-6 6z"/><circle cx="5.25" cy="5.25" r="1"/></svg>Cost</dt>
+        <dd>Free</dd>
+      </div>
     </dl>
   </section>
 
   <section class="configure" id="configure" aria-labelledby="configure-title">
     <header class="section-head reveal">
-      <p class="kicker">Configure your watch</p>
-      <h2 id="configure-title">Four details. Then we keep watch.</h2>
+      <h2 id="configure-title">Start a Watch</h2>
+      <p class="section-lead">Four details. No account, no password.</p>
     </header>
 
     <div class="config-grid">
       <form class="steps" id="form" novalidate>
-        <fieldset class="step reveal" id="step-1">
+        <fieldset class="step" id="step-1">
           <legend><span class="step-num">01</span><span class="step-name">Campground</span></legend>
           <div id="pick">
-            <label for="q" class="field-label">Search by name, or paste a booking link</label>
-            <input class="field" type="search" id="q" autocomplete="off" placeholder="Upper Pines, Lake Powell…" aria-describedby="q-hint" aria-controls="results">
+            <label for="q" class="field-label">Name or booking link</label>
+            <input class="field" type="search" id="q" autocomplete="off" enterkeyhint="search" placeholder="Upper Pines, or paste a booking link" aria-describedby="q-hint" aria-controls="results">
             <ul class="results" id="results" aria-live="polite"></ul>
-            <p class="hint" id="q-hint">Search covers Recreation.gov. For state, provincial or private campgrounds, paste the booking link, or <button type="button" class="link" data-go="map">find it on the map</button>.</p>
+            <p class="hint" id="q-hint">Search finds Recreation.gov campgrounds. For Parks Canada, BC Parks, Ontario Parks, Washington State Parks or Firefly, paste the booking link, or <button type="button" class="link" data-go="map">find it on the map</button>.</p>
             <div id="q-notice" class="notice" hidden></div>
           </div>
           <div id="chosen" class="chosen" hidden>
@@ -88,17 +106,17 @@
           </div>
         </fieldset>
 
-        <fieldset class="step reveal" id="step-2">
+        <fieldset class="step" id="step-2">
           <legend><span class="step-num">02</span><span class="step-name">Dates</span></legend>
           <div class="row">
             <div><label for="in" class="field-label">Check in</label><input class="field" type="date" id="in"></div>
             <div><label for="out" class="field-label">Check out</label><input class="field" type="date" id="out"></div>
           </div>
-          <p class="hint" id="nights">You'll get an alert only when one site is free for every night.</p>
+          <p class="hint" id="nights">One site must be free for every night. Stays up to 14 nights.</p>
           <div id="date-notice" class="notice" hidden></div>
         </fieldset>
 
-        <fieldset class="step reveal" id="step-3">
+        <fieldset class="step" id="step-3">
           <legend><span class="step-num">03</span><span class="step-name">Camping in</span><span class="optional">Optional</span></legend>
           <div class="chips" role="radiogroup" aria-label="Camping in">
             <label><input type="radio" name="camping" value="any" checked><span>Any site</span></label>
@@ -113,17 +131,17 @@
           <p class="hint" id="camping-note" hidden>This booking site doesn't say which sites fit a tent or RV, so you'll hear about any open site.</p>
         </fieldset>
 
-        <fieldset class="step reveal" id="step-4">
+        <fieldset class="step" id="step-4">
           <legend><span class="step-num">04</span><span class="step-name">Email</span></legend>
-          <label for="email" class="field-label">Where should we send alerts?</label>
-          <input class="field" type="email" id="email" autocomplete="email" inputmode="email" placeholder="you@example.com">
+          <label for="email" class="field-label">Send alerts to</label>
+          <input class="field" type="email" id="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" enterkeyhint="send" placeholder="you@example.com">
           <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input type="text" id="website" tabindex="-1" autocomplete="off"></div>
         </fieldset>
       </form>
 
       <aside class="summary" aria-label="Your watch">
-        <div class="summary-card reveal">
-          <p class="kicker">Your watch</p>
+        <div class="summary-card">
+          <p class="card-label">Your watch</p>
           <dl class="summary-list">
             <div><dt>Campground</dt><dd id="sum-place" class="empty">Not chosen</dd></div>
             <div><dt>Stay</dt><dd id="sum-stay" class="empty">No dates yet</dd></div>
@@ -131,62 +149,98 @@
             <div><dt>Alerts to</dt><dd id="sum-email" class="empty">No email yet</dd></div>
           </dl>
           <button type="submit" form="form" class="btn btn-ember btn-block" id="signup-button" disabled>Start watching</button>
+          <p class="needs" id="needs" aria-live="polite">Still needed: a campground, your dates and your email.</p>
           <p class="fine">We email you a confirm link first. Alerts come from alerts@campswoop.com, and every one has a link to stop.</p>
           <div id="result" class="result" role="status" hidden></div>
-          <p class="share-row"><button type="button" class="link" id="share" disabled>Share these dates with friends</button> <span id="share-done" class="fine" hidden>Link copied.</span></p>
+          <p class="share-row"><button type="button" class="link" id="share" disabled>Share these dates</button> <span id="share-done" class="fine" hidden>Link copied.</span></p>
         </div>
         <figure class="preview reveal">
           <div class="preview-frame">
-            <video id="alert-video" muted playsinline preload="metadata" poster="assets/alert-poster.webp" aria-label="Example alert: 24 sites open at Upper Pines Campground for Saturday June 12 to Monday June 14, with a Book now button.">
+            <video id="alert-video" muted playsinline preload="none" poster="assets/alert-poster.webp" aria-label="Example alert: 2 sites open at Upper Pines Campground, CA, for Saturday June 12 to Monday June 14, 2027, with a Book now button and links to Site 044 and Site 123.">
               <source src="assets/alert.mp4" type="video/mp4">
             </video>
             <button type="button" class="replay" id="alert-replay" hidden>Replay</button>
           </div>
-          <figcaption>What an alert looks like</figcaption>
+          <figcaption>Example alert</figcaption>
         </figure>
       </aside>
     </div>
   </section>
 
   <section class="how" aria-labelledby="how-title">
-    <h2 class="visually-hidden" id="how-title">How it works</h2>
+    <h2 class="reveal" id="how-title">What Happens Next</h2>
     <ol class="how-list">
-      <li class="reveal"><span class="how-num" aria-hidden="true">01</span><h3>Pick</h3><p>Choose a campground and your dates. Search by name, paste a booking link, or browse the map.</p></li>
-      <li class="reveal"><span class="how-num" aria-hidden="true">02</span><h3>Confirm</h3><p>Tap the link we email you. That's your whole sign-up: no account, no password.</p></li>
-      <li class="reveal"><span class="how-num" aria-hidden="true">03</span><h3>Swoop</h3><p>We check every 5 minutes. When a site is free for every night, you get an email with a link straight to it.</p></li>
+      <li class="reveal"><span class="how-when">Today</span><h3>Confirm</h3><p>Tap the link in the email we send. That's the whole sign-up: no account, no password.</p></li>
+      <li class="reveal"><span class="how-when">Every 5 minutes</span><h3>We check</h3><p>We look for one site that's free for every night of your stay, right up to check-in.</p></li>
+      <li class="reveal"><span class="how-when">When one opens</span><h3>You book</h3><p>The alert links straight to the booking page. Open sites usually go within minutes, and you pay the campground directly.</p></li>
     </ol>
   </section>
 
   <section class="teaser" aria-labelledby="teaser-title">
-    <div class="teaser-inner reveal">
-      <h2 id="teaser-title">Every campsite.<br>One map.</h2>
-      <p>Browse the campgrounds CampSwoop can watch, plus every other campsite on OpenStreetMap, anywhere in the world. The globe even shows where it's night right now.</p>
-      <button class="btn btn-ember" type="button" data-go="map">Open the map <span class="arrow" aria-hidden="true">→</span></button>
+    <div class="teaser-inner">
+      <div class="teaser-copy reveal">
+        <h2 id="teaser-title">Find It on the Map</h2>
+        <p>Every campground we can watch, plus other campsites from OpenStreetMap when you zoom in close. The shadow shows where it's night right now.</p>
+        <dl class="systems" id="systems" aria-label="Campgrounds we can watch, by booking system">
+          <div><dt>Recreation.gov</dt><dd data-system="r">4,326</dd></div>
+          <div><dt>BC Parks</dt><dd data-system="b">142</dd></div>
+          <div><dt>Ontario Parks</dt><dd data-system="o">104</dd></div>
+          <div><dt>Parks Canada</dt><dd data-system="p">101</dd></div>
+          <div><dt>Washington State Parks</dt><dd data-system="w">93</dd></div>
+          <div><dt>Firefly Reservations</dt><dd>Any, by link</dd></div>
+        </dl>
+        <button class="btn btn-ember" type="button" data-go="map">Open the map <span class="arrow" aria-hidden="true">→</span></button>
+      </div>
+      <figure class="globe-frame reveal">
+        <button type="button" class="globe-link" data-go="map" aria-label="Open the map">
+          <img src="assets/globe.webp" width="1200" height="1200" loading="lazy" decoding="async" alt="">
+        </button>
+        <figcaption aria-hidden="true">
+          <span class="tick tl">4,767 campgrounds</span>
+          <span class="tick tr">6 booking systems</span>
+          <span class="tick bl">OSM campsites up close</span>
+          <span class="tick br">Night shadow, live</span>
+        </figcaption>
+      </figure>
     </div>
   </section>
 
   <section class="faq" aria-labelledby="faq-title">
-    <h2 id="faq-title" class="reveal">Questions</h2>
+    <div class="faq-side reveal">
+      <h2 id="faq-title">Questions</h2>
+      <dl class="facts">
+        <div><dt>Cost</dt><dd>Free</dd></div>
+        <div><dt>Sign-up</dt><dd>Email only, no account</dd></div>
+        <div><dt>Checks</dt><dd>Every 5 minutes</dd></div>
+        <div><dt>Watches</dt><dd>Up to 3 at a time</dd></div>
+        <div><dt>Longest stay</dt><dd>14 nights</dd></div>
+        <div><dt>Dates</dt><dd>Up to about a year ahead</dd></div>
+      </dl>
+    </div>
     <div class="faq-list reveal">
       <details>
         <summary>Which campgrounds can it watch?</summary>
-        <p>Recreation.gov (US national parks, national forests, Army Corps lakes); Parks Canada, BC Parks, Ontario Parks and Washington State Parks; and private campgrounds that book through Firefly Reservations. The map also shows every other campsite on OpenStreetMap so you can find its booking page.</p>
+        <p>Campgrounds on Recreation.gov (US national parks, national forests and Army Corps lakes), Parks Canada, BC Parks, Ontario Parks and Washington State Parks, 4,767 in all, plus private campgrounds that book through Firefly Reservations: paste the booking link. The map also shows other campsites from OpenStreetMap to help you find their booking page, but we can't watch those.</p>
       </details>
       <details>
-        <summary>What about a music festival or a big game?</summary>
-        <p>Pick a campground near the event and use the event dates. Festival camping passes sold as tickets can't be watched here. Going with friends? Fill in the form, then share the dates so they get a link with everything filled in.</p>
+        <summary>How fast do I need to book?</summary>
+        <p>Fast. Open sites usually go within minutes, so every alert links straight to the booking page.</p>
+      </details>
+      <details>
+        <summary>Can I watch for a festival or a big game?</summary>
+        <p>Yes. Watch a campground near it for the event dates. Camping passes sold as event tickets can't be watched. Going with friends? Fill in the form, then share the dates so they get a link with everything filled in.</p>
       </details>
       <details>
         <summary>How do I stop alerts?</summary>
-        <p>Every email from us has a link to stop that alert and a link to see all your alerts. Each person can watch up to 3 stays at once, up to about a year ahead.</p>
+        <p>Every email has a link to stop that alert and a link to see all of yours.</p>
       </details>
       <details>
         <summary>Is my email shared?</summary>
-        <p>No. Your address is used only to send your alerts and is never shown to anyone else.</p>
+        <p>No. It's used only to send your alerts.</p>
       </details>
       <details>
         <summary>Does it cost anything?</summary>
-        <p>No. You still book and pay the campground directly.</p>
+        <p>No. You book and pay the campground directly.</p>
       </details>
     </div>
   </section>
@@ -199,15 +253,15 @@
     <aside class="map-side" id="map-side">
       <div class="map-search">
         <label for="map-q" class="visually-hidden">Search a place or campground</label>
-        <input class="field" type="search" id="map-q" autocomplete="off" placeholder="Search a place or campground">
+        <input class="field" type="search" id="map-q" autocomplete="off" enterkeyhint="search" placeholder="Search a place or campground">
         <ul class="map-results" id="map-results" aria-live="polite"></ul>
       </div>
       <button type="button" class="sheet-handle" id="sheet-handle" aria-expanded="false" aria-controls="map-side-body"><span id="inview">Loading campgrounds…</span><span class="chev" aria-hidden="true"></span></button>
       <div class="map-side-body" id="map-side-body">
         <div class="map-detail" id="map-detail" hidden></div>
         <div class="layers">
-          <label class="toggle"><input type="checkbox" id="layer-watch" checked><span class="swatch ember" aria-hidden="true"></span><span>CampSwoop can watch <b id="count-watch"></b></span></label>
-          <label class="toggle"><input type="checkbox" id="layer-osm" checked><span class="swatch bone" aria-hidden="true"></span><span>All other campsites <small id="osm-hint">OpenStreetMap · zoom in close to see them</small></span></label>
+          <label class="toggle"><input type="checkbox" id="layer-watch" checked><span class="swatch ember" aria-hidden="true"></span><span>We can watch <b id="count-watch"></b></span></label>
+          <label class="toggle"><input type="checkbox" id="layer-osm" checked><span class="swatch bone" aria-hidden="true"></span><span>Other campsites <small id="osm-hint">OpenStreetMap · zoom in close to see them</small></span></label>
           <label class="toggle"><input type="checkbox" id="layer-night" checked><span class="swatch night" aria-hidden="true"></span><span>Night right now <small id="night-hint"></small></span></label>
         </div>
         <ul class="map-list" id="map-list"></ul>
@@ -224,7 +278,7 @@
   <p class="footer-mark" aria-hidden="true">CampSwoop</p>
   <div class="footer-row">
     <nav aria-label="Footer"><button type="button" class="link" data-go="watch">Watch</button><button type="button" class="link" data-go="map">Map</button></nav>
-    <p>CampSwoop is not affiliated with Recreation.gov, Parks Canada, any state or provincial park system, Firefly Reservations or any campground. Availability can change between our check and your booking.</p>
+    <p>CampSwoop isn't affiliated with Recreation.gov, Parks Canada, BC Parks, Ontario Parks, Washington State Parks, Firefly Reservations or any campground. Availability can change between our check and your booking.</p>
   </div>
 </footer>
 

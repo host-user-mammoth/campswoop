@@ -28,7 +28,9 @@ let popup;
 let started = false;
 let spinning = false;
 const errors = [];
-window.CampSwoopMap = { get map() { return map; }, errors }; // for support and testing
+// Phones in either orientation get the bottom sheet (kept in step with the sheet rules in site.css).
+const phone = matchMedia("(max-width: 760px), (max-height: 500px) and (orientation: landscape) and (max-width: 1000px)");
+window.CampSwoopMap = { get map() { return map; }, errors, stopSpin() { spinning = false; } }; // for support and testing
 
 export async function open(api) {
   hooks = api;
@@ -77,8 +79,9 @@ function build() {
   const median = values => { const sorted = [...values].sort((a, b) => a - b); return sorted[Math.floor(sorted.length / 2)]; };
   const center = places.length ? [median(places.map(p => p.lng)), median(places.map(p => p.lat))] : [-98, 40];
   map = new maplibregl.Map({
-    container: "map", style: STYLE, center, zoom: innerWidth < 760 ? 0.9 : 1.6,
+    container: "map", style: STYLE, center, zoom: phone.matches ? 0.9 : 1.6,
     minZoom: 0.6, maxZoom: 17, attributionControl: false, dragRotate: false, pitchWithRotate: false,
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2), // a 3x phone draws 44% fewer pixels, with no visible loss
   });
   map.touchZoomRotate.disableRotation();
   map.keyboard.disableRotation();
@@ -98,6 +101,7 @@ function build() {
   });
   map.on("load", () => {
     map.resize();
+    $("map").classList.add("ready"); // fades the globe in instead of popping from black
     status("");
     updateList();
     startSpin();
@@ -105,8 +109,9 @@ function build() {
   });
   // Re-measure whenever the panel's size changes: tab switches, phone rotation, the keyboard opening.
   new ResizeObserver(() => map.resize()).observe($("map"));
-  map.on("moveend", debounce(updateList, 150));
-  map.on("idle", debounce(updateList, 100)); // tiles that arrive after the move settle the "in view" counts
+  // While the globe turns by itself the list stays put, so a row can't change under a finger.
+  map.on("moveend", debounce(() => { if (!spinning) updateList(); }, 150));
+  map.on("idle", debounce(() => { if (!spinning) updateList(); }, 100)); // late tiles settle the "in view" counts
   map.on("error", event => { errors.push(String(event.error?.message || event.error || event)); console.warn("map:", errors.at(-1)); });
   for (const type of ["mousedown", "touchstart", "wheel", "dragstart", "keydown"]) map.on(type, () => { spinning = false; });
   wireUi();
@@ -145,7 +150,7 @@ function addLayers() {
   // Night: the part of the globe where the sun is down right now, with a warm line where it's rising or setting.
   map.addSource("night", { type: "geojson", data: nightGeoJson(new Date()) });
   map.addLayer({ id: "night-fill", type: "fill", source: "night", filter: ["==", ["geometry-type"], "Polygon"],
-                 paint: { "fill-color": "#00050f", "fill-opacity": 0.46 } }, firstLabel);
+                 paint: { "fill-color": "#000000", "fill-opacity": 0.42 } }, firstLabel);
   map.addLayer({ id: "night-edge", type: "line", source: "night", filter: ["==", ["geometry-type"], "LineString"],
                  paint: { "line-color": "#ff9a5a", "line-opacity": 0.4, "line-width": 1.4, "line-blur": 1.2 } }, firstLabel);
 
@@ -171,7 +176,7 @@ function addLayers() {
     paint: { "circle-color": EMBER, "circle-blur": 1, "circle-opacity": 0.35,
              "circle-radius": ["case", ["has", "point_count"], ["*", clusterRadius, 1.9], 11] } });
   map.addLayer({ id: "watch-clusters", type: "circle", source: "watch", filter: ["has", "point_count"],
-    paint: { "circle-color": EMBER, "circle-radius": clusterRadius, "circle-stroke-width": 1.5, "circle-stroke-color": "rgba(255, 220, 200, 0.45)" } });
+    paint: { "circle-color": EMBER, "circle-radius": clusterRadius, "circle-stroke-width": 1.5, "circle-stroke-color": "#0b0a09" } });
   map.addLayer({ id: "watch-count", type: "symbol", source: "watch", filter: ["has", "point_count"],
     layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-allow-overlap": true },
     paint: { "text-color": "#170a05" } });
@@ -192,33 +197,49 @@ function addLayers() {
     const zoom = await map.getSource("watch").getClusterExpansionZoom(feature.properties.cluster_id);
     move({ center: feature.geometry.coordinates, zoom: Math.min(zoom + 0.5, 14) });
   });
-  map.on("click", "watch-points", event => showPlace(places[event.features[0].properties.i]));
+  map.on("click", "watch-points", event => showPlace(places[event.features[0].properties.i], false, true));
   map.on("click", "osm-campsites", event => {
     if (map.queryRenderedFeatures(event.point, { layers: ["watch-points"] }).length) return;
     showOsm(event.features[0], event.lngLat);
   });
 }
 
-const phone = matchMedia("(max-width: 760px)");
+// On phones the open sheet covers the lower part of the map, so frame the target above it.
+function cameraPadding() {
+  if (!phone.matches) return 0;
+  const sheet = $("map-side");
+  const covered = sheet.classList.contains("open") ? sheet.offsetHeight : peekHeight(sheet);
+  return { top: 90, bottom: covered + 32, left: 0, right: 0 };
+}
+
+// How much of the closed sheet shows: the search box and the handle, above the home indicator.
+function peekHeight(sheet) {
+  const style = getComputedStyle(sheet);
+  return (parseFloat(style.getPropertyValue("--peek")) || 104) + (parseFloat(style.paddingBottom) || 0);
+}
 
 function move(options) {
-  // On phones the bottom sheet covers the lower half, so keep the target in the upper half.
-  const padding = phone.matches ? { top: 90, bottom: Math.round(innerHeight * 0.45), left: 0, right: 0 } : 0;
-  if (hooks.reduceMotion) map.jumpTo({ padding, ...options });
-  else map.flyTo({ padding, ...options, speed: 1.4, curve: 1.42, essential: true });
+  const padding = cameraPadding();
+  if (hooks.reduceMotion) return map.jumpTo({ padding, ...options });
+  const zoomChange = Math.abs((options.zoom ?? map.getZoom()) - map.getZoom());
+  map.flyTo({ padding, ...options, duration: Math.min(2200, 700 + 160 * zoomChange), essential: true });
 }
 
 function startSpin() {
-  spinning = !hooks.reduceMotion;
-  const until = Date.now() + 90000; // one slow turn to show the scope, then rest
-  const step = () => {
-    if (!spinning || Date.now() > until) { spinning = false; return; }
-    if (document.body.dataset.tab !== "map" || map.getZoom() > 3) { setTimeout(step, 1500); return; }
-    const center = map.getCenter();
-    map.easeTo({ center: [center.lng + 4, center.lat], duration: 1000, easing: t => t });
-    map.once("moveend", step);
-  };
-  setTimeout(step, 600);
+  if (hooks.reduceMotion) return;
+  spinning = true;
+  // One slow turn to show the scope, then rest: 4° a second, stepped at 30 fps, only while someone can see it.
+  const until = performance.now() + 90000;
+  let last = performance.now();
+  const timer = setInterval(() => {
+    const now = performance.now();
+    if (!spinning || now > until) { clearInterval(timer); spinning = false; updateList(); return; }
+    if (!document.hidden && document.body.dataset.tab === "map" && map.getZoom() <= 3 && !$("map-side").classList.contains("open")) {
+      const center = map.getCenter();
+      map.jumpTo({ center: [center.lng + 4 * (now - last) / 1000, center.lat] });
+    }
+    last = now;
+  }, 1000 / 30);
 }
 
 // ---------------------------------------------------------------- Popups
@@ -239,8 +260,8 @@ function openPopup(lngLat, element) {
     back.addEventListener("click", closeDetail);
     $("map-detail").replaceChildren(back, element);
     $("map-detail").hidden = false;
-    $("map-side").classList.add("open", "detail");
-    $("sheet-handle").setAttribute("aria-expanded", "true");
+    $("map-side").classList.add("detail");
+    setSheet(true);
     $("map-detail").scrollTop = 0;
     element.querySelector("h3")?.setAttribute("tabindex", "-1");
     element.querySelector("h3")?.focus({ preventScroll: true });
@@ -256,12 +277,13 @@ function closeDetail() {
   $("map-side").classList.remove("detail");
 }
 
-function showPlace(p, fly = false) {
+// fly: from a list or search (move there); tapped: a dot on the map (on phones, keep it above the sheet).
+function showPlace(p, fly = false, tapped = false) {
   const element = document.createElement("div");
   element.innerHTML = `
-    ${p.s === "r" ? '<img class="pop-photo" alt="" hidden>' : ""}
+    ${p.s === "r" ? '<img class="pop-photo" alt="">' : ""}
     <div class="pop-body">
-      <p class="pop-kicker">Can watch · ${esc(SYSTEMS[p.s])}</p>
+      <p class="pop-kicker">${esc(SYSTEMS[p.s])}</p>
       <h3>${esc(p.name)}</h3>
       <p class="pop-meta">${esc(p.area)}</p>
       ${sunHtml(p.lat, p.lng)}
@@ -276,18 +298,22 @@ function showPlace(p, fly = false) {
     hooks.watchFromMap({ name: p.name, detail: `${p.area} · ${SYSTEMS[p.s]}`, url: bookingLink(p), noFilter: "wbop".includes(p.s) });
   });
   if (p.s === "r") loadPhoto(p.ref, element.querySelector(".pop-photo"));
-  if (fly) move({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 10) });
   openPopup([p.lng, p.lat], element);
+  // Framed after the sheet opens, so its real height is known.
+  if (fly) move({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 10) });
+  else if (tapped && phone.matches) map.easeTo({ center: [p.lng, p.lat], padding: cameraPadding(), duration: hooks.reduceMotion ? 0 : 450 });
 }
 
+// The photo's space is reserved, so nothing jumps when it arrives; it fades in, or goes if there's none.
 async function loadPhoto(id, img) {
   try {
     const params = new URLSearchParams({ fq: `entity_id:${id}`, size: "1" });
     const result = (await (await fetch(`${RECGOV_SEARCH}?${params}`)).json()).results?.[0];
-    if (!result?.preview_image_url) return;
-    img.onload = () => { img.hidden = false; };
+    if (!result?.preview_image_url) return img.remove();
+    img.onload = () => img.classList.add("loaded");
+    img.onerror = () => img.remove();
     img.src = result.preview_image_url;
-  } catch (error) { /* no photo */ }
+  } catch (error) { img.remove(); }
 }
 
 function showOsm(feature, lngLat) {
@@ -299,7 +325,7 @@ function showOsm(feature, lngLat) {
   const element = document.createElement("div");
   element.innerHTML = `
     <div class="pop-body">
-      <p class="pop-kicker bone">Campsite · OpenStreetMap</p>
+      <p class="pop-kicker bone">OpenStreetMap campsite</p>
       <h3>${esc(name)}</h3>
       ${sunHtml(lat, lng)}
       <p class="pop-meta">CampSwoop can't watch this one yet. If it books through Recreation.gov, Firefly or GoingToCamp, paste its booking link on the Watch tab.</p>
@@ -380,15 +406,25 @@ function updateList() {
   const zoom = map.getZoom();
   const bounds = map.getBounds();
   const center = map.getCenter();
-  const visible = zoom < 2.2 ? places : places.filter(p => bounds.contains([p.lng, p.lat]));
-  const cosLat = Math.cos(rad(center.lat));
-  visible.sort((a, b) => dist(a) - dist(b));
-  function dist(p) { const dx = (p.lng - center.lng) * cosLat; const dy = p.lat - center.lat; return dx * dx + dy * dy; }
-
-  $("inview").textContent = `${visible.length.toLocaleString()} watchable ${zoom < 2.2 ? "worldwide" : "in view"}`;
   const list = $("map-list");
-  list.innerHTML = visible.slice(0, LIST_LIMIT).map(p => `<li><button type="button" data-i="${p.i}">${esc(p.name)}<small>${esc(p.area)} · ${esc(SYSTEMS[p.s])}</small></button></li>`).join("")
-    + (visible.length > LIST_LIMIT ? `<li class="more">Zoom in to see the other ${(visible.length - LIST_LIMIT).toLocaleString()}.</li>` : "");
+  if (zoom < 2.2) {
+    // The whole world: list the booking systems (tap one to fly to its campgrounds), not 60 arbitrary rows.
+    $("inview").textContent = `${places.length.toLocaleString()} campgrounds we can watch`;
+    const counts = {};
+    for (const p of places) counts[p.s] = (counts[p.s] || 0) + 1;
+    list.innerHTML = Object.keys(SYSTEMS).filter(s => counts[s]).sort((a, b) => counts[b] - counts[a])
+      .map(s => `<li><button type="button" class="system" data-system="${s}"><span>${esc(SYSTEMS[s])}</span><b>${counts[s].toLocaleString()}</b></button></li>`).join("")
+      + `<li class="note">Zoom in, or pick a system, to list campgrounds by name.</li>`;
+  } else {
+    // A filtered copy, never places itself: dots, rows and search results find a place by its index in places.
+    const visible = places.filter(p => bounds.contains([p.lng, p.lat]));
+    const cosLat = Math.cos(rad(center.lat));
+    const dist = p => { const dx = (p.lng - center.lng) * cosLat; const dy = p.lat - center.lat; return dx * dx + dy * dy; };
+    visible.sort((a, b) => dist(a) - dist(b));
+    $("inview").textContent = `${visible.length.toLocaleString()} we can watch in view`;
+    list.innerHTML = visible.slice(0, LIST_LIMIT).map(p => `<li><button type="button" data-i="${p.i}">${esc(p.name)}<small>${esc(p.area)} · ${esc(SYSTEMS[p.s])}</small></button></li>`).join("")
+      + (visible.length > LIST_LIMIT ? `<li class="more">Zoom in to see the other ${(visible.length - LIST_LIMIT).toLocaleString()}.</li>` : "");
+  }
 
   if (!$("layer-osm").checked) $("osm-hint").textContent = "OpenStreetMap · hidden";
   else if (zoom < 14) $("osm-hint").textContent = "OpenStreetMap · zoom in close to see them";
@@ -398,10 +434,81 @@ function updateList() {
   }
 }
 
+// The phone sheet: tap the handle to open or close it, or drag it; a flick decides by its speed.
+function setSheet(open) {
+  $("map-side").classList.toggle("open", open);
+  $("sheet-handle").setAttribute("aria-expanded", String(open));
+  if (open) spinning = false;
+  else closeDetail();
+}
+
+function wireSheet() {
+  const sheet = $("map-side");
+  const handle = $("sheet-handle");
+  const setPeek = () => sheet.style.setProperty("--peek", `${sheet.querySelector(".map-search").offsetHeight + handle.offsetHeight + 2}px`);
+  setPeek();
+  new ResizeObserver(setPeek).observe(handle);
+  const rubber = (over, size) => (over * size * 0.55) / (size + 0.55 * Math.abs(over));
+  let drag = null;
+  let swallowClick = false;
+  handle.addEventListener("pointerdown", event => {
+    if (!phone.matches || drag) return; // ignore a second finger
+    const closed = sheet.offsetHeight - peekHeight(sheet);
+    drag = { id: event.pointerId, y0: event.clientY, from: sheet.classList.contains("open") ? 0 : closed, closed, moved: false,
+             history: [[event.timeStamp, event.clientY]] };
+    handle.setPointerCapture(event.pointerId);
+  });
+  handle.addEventListener("pointermove", event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dy = event.clientY - drag.y0;
+    if (!drag.moved && Math.abs(dy) < 8) return; // a tap stays a tap
+    if (!drag.moved) { drag.moved = true; sheet.classList.add("dragging"); spinning = false; }
+    let y = drag.from + dy;
+    if (y < 0) y = -rubber(-y, sheet.offsetHeight);
+    else if (y > drag.closed) y = drag.closed + rubber(y - drag.closed, sheet.offsetHeight);
+    sheet.style.transform = `translateY(${y}px)`;
+    drag.history = [...drag.history.slice(-4), [event.timeStamp, event.clientY]];
+  });
+  const endDrag = event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const done = drag;
+    drag = null;
+    if (!done.moved) return;
+    swallowClick = true;
+    const [t0, y0] = done.history[0];
+    const [t1, y1] = done.history.at(-1);
+    const speed = (y1 - y0) / Math.max(16, t1 - t0); // px per ms; negative is upward
+    sheet.classList.remove("dragging");
+    sheet.style.transform = ""; // the transition carries on from where the finger let go
+    setSheet(Math.abs(speed) > 0.11 ? speed < 0 : done.from + event.clientY - done.y0 < done.closed / 2);
+  };
+  handle.addEventListener("pointerup", endDrag);
+  handle.addEventListener("pointercancel", endDrag);
+  handle.addEventListener("click", () => {
+    if (swallowClick) { swallowClick = false; return; }
+    if (phone.matches) setSheet(!sheet.classList.contains("open"));
+  });
+  sheet.addEventListener("pointerdown", () => { spinning = false; });
+  // Searching on a phone opens the sheet, so the results have room above the keyboard.
+  $("map-q").addEventListener("focus", () => { if (phone.matches) setSheet(true); });
+  // The desktop panel rises in once, not on every visit to the Map tab.
+  sheet.addEventListener("animationend", () => { sheet.style.animation = "none"; }, { once: true });
+}
+
 function wireUi() {
+  wireSheet();
   $("map-list").addEventListener("click", event => {
-    const button = event.target.closest("button[data-i]");
-    if (button) { spinning = false; showPlace(places[button.dataset.i], true); }
+    const button = event.target.closest("button[data-i], button[data-system]");
+    if (!button) return;
+    spinning = false;
+    if (button.dataset.i) return showPlace(places[button.dataset.i], true);
+    if (phone.matches) setSheet(false); // show the region, not the list
+    const own = places.filter(p => p.s === button.dataset.system);
+    if (own.length === 1) return move({ center: [own[0].lng, own[0].lat], zoom: 11 });
+    const lngs = own.map(p => p.lng), lats = own.map(p => p.lat);
+    map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+                  { padding: Object.assign({ top: 60, bottom: 60, left: 60, right: 60 }, cameraPadding() || {}),
+                    maxZoom: 8, duration: hooks.reduceMotion ? 0 : 1400 });
   });
   $("layer-watch").addEventListener("change", event => {
     for (const id of ["watch-glow", "watch-clusters", "watch-count", "watch-points", "watch-labels"]) map.setLayoutProperty(id, "visibility", event.target.checked ? "visible" : "none");
@@ -409,12 +516,6 @@ function wireUi() {
   $("layer-osm").addEventListener("change", event => { map.setLayoutProperty("osm-campsites", "visibility", event.target.checked ? "visible" : "none"); updateList(); });
   $("layer-night").addEventListener("change", event => {
     for (const id of ["night-fill", "night-edge"]) map.setLayoutProperty(id, "visibility", event.target.checked ? "visible" : "none");
-  });
-  $("sheet-handle").addEventListener("click", () => {
-    const open = !$("map-side").classList.contains("open");
-    $("map-side").classList.toggle("open", open);
-    $("sheet-handle").setAttribute("aria-expanded", String(open));
-    if (!open) closeDetail();
   });
   $("locate").addEventListener("click", () => {
     if (!navigator.geolocation) return status("Your browser can't share your location.", 3000);
@@ -448,35 +549,41 @@ function wireUi() {
     results.innerHTML = "";
     input.blur();
     if (button.dataset.i) return showPlace(places[button.dataset.i], true);
+    if (phone.matches) setSheet(false); // a place: show the map there
     const [w, s, e, n] = (button.dataset.extent || "").split(",").map(Number);
     if (button.dataset.extent && [w, s, e, n].every(Number.isFinite)) {
-      map.fitBounds([[w, s], [e, n]], { padding: 60, maxZoom: 12, duration: hooks.reduceMotion ? 0 : 1600 });
+      map.fitBounds([[w, s], [e, n]], { padding: Object.assign({ top: 60, bottom: 60, left: 60, right: 60 }, cameraPadding() || {}),
+                                        maxZoom: 12, duration: hooks.reduceMotion ? 0 : 1600 });
     } else {
       move({ center: button.dataset.center.split(",").map(Number), zoom: 10 });
     }
   });
 
+  // Campgrounds we can watch show at once; places from Photon join below them when (and if) it answers,
+  // so nothing moves under a finger that's about to tap.
   async function runSearch(q, mine) {
     const needle = q.toLowerCase();
     const local = places.filter(p => p.name.toLowerCase().includes(needle)).slice(0, 6);
+    const campItems = local.map(p => `<li><button type="button" data-i="${p.i}">${esc(p.name)}<small>${esc(p.area)} · ${esc(SYSTEMS[p.s])}</small></button></li>`).join("");
+    const render = (placeItems, searching) => {
+      if (mine !== seq) return;
+      results.innerHTML = (campItems ? `<li class="group">Campgrounds we can watch</li>${campItems}` : "")
+        + (placeItems ? `<li class="group">Places</li>${placeItems}` : searching ? `<li class="group">Searching places…</li>` : "")
+        || `<li class="group">No matches</li>`;
+    };
+    render("", q.length >= 3);
+    if (q.length < 3) return;
     let found = [];
-    if (q.length >= 3) {
-      try {
-        const params = new URLSearchParams({ q, limit: "6", lang: "en" });
-        found = (await (await fetch(`${PHOTON}?${params}`)).json()).features || [];
-      } catch (error) { /* places search unavailable */ }
-    }
-    if (mine !== seq) return;
-    const placeItems = found.map(f => {
+    try {
+      const params = new URLSearchParams({ q, limit: "6", lang: "en" });
+      found = (await (await fetch(`${PHOTON}?${params}`, { signal: AbortSignal.timeout?.(5000) })).json()).features || [];
+    } catch (error) { /* places search unavailable or too slow */ }
+    render(found.map(f => {
       const p = f.properties || {};
       const where = [p.state, p.country].filter(Boolean).join(", ");
       const extent = p.extent ? `${p.extent[0]},${p.extent[3]},${p.extent[2]},${p.extent[1]}` : "";
       return `<li><button type="button" data-center="${f.geometry.coordinates.join(",")}" data-extent="${extent}">${esc(p.name || p.street || q)}<small>${esc(where || p.osm_value || "")}</small></button></li>`;
-    }).join("");
-    const campItems = local.map(p => `<li><button type="button" data-i="${p.i}">${esc(p.name)}<small>${esc(p.area)} · ${esc(SYSTEMS[p.s])}</small></button></li>`).join("");
-    results.innerHTML = (placeItems ? `<li class="group">Places</li>${placeItems}` : "")
-      + (campItems ? `<li class="group">Campgrounds CampSwoop can watch</li>${campItems}` : "")
-      || `<li class="group">No matches</li>`;
+    }).join(""), false);
   }
 }
 

@@ -40,38 +40,45 @@ const navHeight = () => $("nav").offsetHeight;
 const panels = { watch: $("panel-watch"), map: $("panel-map") };
 const tabButtons = { watch: $("tab-watch"), map: $("tab-map") };
 
-function showTab(name, { scroll = true } = {}) {
+function showTab(name, { scroll = true, animate = false } = {}) {
   if (!panels[name]) name = "watch";
+  const changed = document.body.dataset.tab !== name;
   for (const key of Object.keys(panels)) {
     const on = key === name;
     panels[key].hidden = !on;
     tabButtons[key].setAttribute("aria-selected", String(on));
     tabButtons[key].tabIndex = on ? 0 : -1;
   }
+  // Hiding a panel restarts its CSS animations; the hero's entrance plays once per visit, not per tab switch.
+  if (name !== "watch") $("hero").classList.add("played");
   document.body.dataset.tab = name;
   history.replaceState(null, "", location.pathname + location.search + (name === "map" ? "#map" : ""));
-  placeInk();
+  placeInk(animate && changed);
   updateNav();
   if (scroll) window.scrollTo({ top: 0, behavior: "auto" });
+  if (changed && animate && !reduceMotion) {
+    panels[name].animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  }
   if (name === "map") openMap();
 }
 
-function placeInk() {
+// The tab ink is 1px wide and scaled to the chosen tab. It slides only when someone switches tabs.
+function placeInk(animate = false) {
   const tab = Object.values(tabButtons).find(t => t.getAttribute("aria-selected") === "true");
   const ink = document.querySelector(".tab-ink");
   if (!tab || !ink) return;
-  const pad = parseFloat(getComputedStyle(tab).paddingLeft) || 0;
-  ink.style.width = `${tab.offsetWidth - pad * 2}px`;
-  ink.style.transform = `translateX(${tab.offsetLeft + pad}px)`;
+  if (!animate) ink.style.transition = "none";
+  ink.style.transform = `translateX(${tab.offsetLeft}px) scaleX(${tab.offsetWidth})`;
+  if (!animate) { ink.getBoundingClientRect(); ink.style.transition = ""; }
 }
 
 for (const [name, tab] of Object.entries(tabButtons)) {
-  tab.addEventListener("click", () => showTab(name));
+  tab.addEventListener("click", () => showTab(name, { animate: true }));
   tab.addEventListener("keydown", event => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const next = name === "watch" ? "map" : "watch";
-    showTab(event.key === "Home" ? "watch" : event.key === "End" ? "map" : next);
+    showTab(event.key === "Home" ? "watch" : event.key === "End" ? "map" : next, { animate: true });
     tabButtons[document.body.dataset.tab].focus();
   });
 }
@@ -81,26 +88,30 @@ document.addEventListener("click", event => {
   if (!go) return;
   event.preventDefault();
   const target = go.dataset.go;
-  if (target === "map") showTab("map");
+  if (target === "map") showTab("map", { animate: true });
   else if (target === "configure") goToConfigurator();
-  else showTab("watch");
+  else showTab("watch", { animate: true });
 });
+// iOS Safari shows :active press states only when the page listens for touches.
+document.addEventListener("touchstart", () => {}, { passive: true });
 
-function scrollToElement(element) {
+function scrollToElement(element, instant = false) {
   const top = element.getBoundingClientRect().top + window.scrollY - navHeight() - 8;
-  window.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+  window.scrollTo({ top, behavior: reduceMotion || instant ? "auto" : "smooth" });
 }
 
-function goToConfigurator(focusDates = false) {
+function goToConfigurator(focusDates = false, { instant = false } = {}) {
   if (document.body.dataset.tab !== "watch") showTab("watch", { scroll: false });
-  scrollToElement($("configure"));
+  scrollToElement($("configure"), instant);
+  // Phones won't open the keyboard from a timer, so focusing there would only light the field up.
+  if (matchMedia("(pointer: coarse)").matches) return;
   const target = focusDates || state.place ? $("in") : $("q");
-  setTimeout(() => target.focus({ preventScroll: true }), reduceMotion ? 0 : 650);
+  setTimeout(() => target.focus({ preventScroll: true }), reduceMotion || instant ? 0 : 650);
 }
 
 addEventListener("hashchange", () => showTab(location.hash === "#map" ? "map" : "watch"));
-addEventListener("resize", placeInk);
-document.fonts?.ready.then(placeInk);
+addEventListener("resize", () => placeInk());
+document.fonts?.ready.then(() => placeInk());
 
 function updateNav() {
   $("nav").classList.toggle("solid", document.body.dataset.tab === "map" || window.scrollY > 40);
@@ -114,6 +125,15 @@ const revealer = new IntersectionObserver(entries => {
   }
 }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
 document.querySelectorAll(".reveal").forEach(element => revealer.observe(element));
+// Fail-safe: a fast jump (a link to #configure, restoring scroll) can pass a section without the observer
+// firing for it; nothing above the bottom of the screen may stay invisible.
+function revealPassed() {
+  for (const element of document.querySelectorAll(".reveal:not(.in)")) {
+    if (element.getBoundingClientRect().top < innerHeight) { element.classList.add("in"); revealer.unobserve(element); }
+  }
+}
+addEventListener("scrollend", revealPassed);
+addEventListener("load", revealPassed);
 
 // ---------------------------------------------------------------- Time-aware hero
 const hero = $("hero");
@@ -141,37 +161,54 @@ if (!reduceMotion && !saveData) {
     else heroVideo.pause();
   }).observe(hero);
 }
+// Someone who turns on reduced motion mid-visit gets stillness right away.
+matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", event => {
+  if (!event.matches) return;
+  heroVideo.pause();
+  alertVideo.pause();
+  window.CampSwoopMap?.stopSpin?.();
+});
 
-// Coverage count from the map data, counted up once.
+// The page ships the current counts; refresh them from the map data so they never go stale.
 (window.requestIdleCallback || (fn => setTimeout(fn, 1200)))(async () => {
   try {
     const data = await (await fetch("data/campgrounds.json")).json();
-    const total = data.places.length;
-    const output = $("coverage-count");
-    if (reduceMotion) { output.textContent = total.toLocaleString(); return; }
-    const start = performance.now();
-    const frame = now => {
-      const t = Math.min(1, (now - start) / 1400);
-      output.textContent = Math.round(total * (1 - Math.pow(1 - t, 3))).toLocaleString();
-      if (t < 1) requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-  } catch (error) { /* keep the static figure */ }
+    $("coverage-count").textContent = data.places.length.toLocaleString();
+    const counts = {};
+    for (const [system] of data.places) counts[system] = (counts[system] || 0) + 1;
+    for (const cell of document.querySelectorAll("#systems [data-system]")) cell.textContent = (counts[cell.dataset.system] || 0).toLocaleString();
+  } catch (error) { /* keep the static figures */ }
 });
 
 // ---------------------------------------------------------------- Alert preview clip
 const alertVideo = $("alert-video");
 const replay = $("alert-replay");
-if (!reduceMotion) {
+if (reduceMotion) {
+  // Still by default (the poster is the finished alert), but one tap plays it.
+  replay.textContent = "Play";
+  replay.hidden = false;
+} else {
+  // Start from the empty card, so the alert builds itself rather than blanking a finished one.
+  alertVideo.poster = "assets/alert-poster-start.webp";
+  // Load the clip (90 KB) only when it's about to scroll into view; with reduced motion it loads on Play.
   new IntersectionObserver(([entry], observer) => {
     if (!entry.isIntersecting) return;
     observer.disconnect();
-    alertVideo.currentTime = 0;
-    alertVideo.play().catch(() => { replay.hidden = false; });
-  }, { threshold: 0.5 }).observe(alertVideo);
-  alertVideo.addEventListener("ended", () => { replay.hidden = false; });
-  replay.addEventListener("click", () => { replay.hidden = true; alertVideo.currentTime = 0; alertVideo.play().catch(() => {}); });
+    alertVideo.preload = "auto";
+    alertVideo.load();
+  }, { rootMargin: "600px 0px" }).observe(alertVideo);
+  // It plays once it's well in view; scrolled away before the end, it rewinds for next time.
+  new IntersectionObserver(([entry]) => {
+    if (entry.intersectionRatio >= 0.6 && alertVideo.paused && !alertVideo.ended) {
+      alertVideo.play().catch(() => { alertVideo.poster = "assets/alert-poster.webp"; replay.textContent = "Play"; replay.hidden = false; });
+    } else if (entry.intersectionRatio < 0.25 && !alertVideo.paused) {
+      alertVideo.pause();
+      alertVideo.currentTime = 0;
+    }
+  }, { threshold: [0, 0.25, 0.6] }).observe(alertVideo);
 }
+alertVideo.addEventListener("ended", () => { replay.textContent = "Replay"; replay.hidden = false; });
+replay.addEventListener("click", () => { replay.hidden = true; alertVideo.currentTime = 0; alertVideo.play().catch(() => {}); });
 
 // ---------------------------------------------------------------- Step 1: campground
 let searchTimer;
@@ -330,13 +367,18 @@ function signup() {
   } };
 }
 
+const flashTimers = {};
 function setSummary(id, value, empty) {
   const element = $(id);
   const text = value || empty;
   if (element.textContent === text) return;
   element.textContent = text;
   element.classList.toggle("empty", !value);
-  if (value && !reduceMotion) { element.classList.remove("flash"); void element.offsetWidth; element.classList.add("flash"); }
+  // One ember flash once typing pauses, not a strobe on every keystroke.
+  clearTimeout(flashTimers[id]);
+  if (value && !reduceMotion) {
+    flashTimers[id] = setTimeout(() => element.animate([{ color: "#ff6a3d" }, { color: "#f4efe6" }], { duration: 600, easing: "ease-out" }), 400);
+  }
 }
 
 function update() {
@@ -344,8 +386,8 @@ function update() {
   $("date-notice").hidden = !s.error;
   if (s.error) $("date-notice").textContent = s.error;
   $("nights").textContent = s.start
-    ? `${s.nights} night${s.nights === 1 ? "" : "s"}: ${dayName(s.start)} → ${dayName(s.end)}. You'll get an alert only when one site is free for every night.`
-    : "You'll get an alert only when one site is free for every night.";
+    ? `${s.nights} night${s.nights === 1 ? "" : "s"}: ${dayName(s.start)} → ${dayName(s.end)}. One site must be free for every night.`
+    : `One site must be free for every night. Stays up to ${MAX_NIGHTS} nights.`;
   $("camping-note").hidden = !state.place?.noFilter;
 
   const email = $("email").value.trim();
@@ -362,6 +404,10 @@ function update() {
   const data = signup();
   $("share").disabled = !data;
   $("signup-button").disabled = !data || !validEmail(email) || sending;
+  // Say what's missing rather than leaving a silent, disabled button.
+  const missing = [!state.place && "a campground", !s.start && "your dates", !validEmail(email) && "your email"].filter(Boolean);
+  $("needs").textContent = missing.length && !sending
+    ? `Still needed: ${missing.length < 2 ? missing[0] : `${missing.slice(0, -1).join(", ")} and ${missing.at(-1)}`}.` : "";
 }
 
 $("email").addEventListener("input", update);
@@ -415,9 +461,10 @@ function openMap() {
 }
 
 function watchFromMap(place) {
-  showTab("watch", { scroll: false });
+  showTab("watch", { scroll: false, animate: true });
   choose({ name: place.name, detail: place.detail, url: place.url, noFilter: !!place.noFilter });
-  requestAnimationFrame(() => goToConfigurator(true));
+  // Straight to the form, behind the panel's fade: a smooth scroll would sweep through the whole hero.
+  requestAnimationFrame(() => goToConfigurator(true, { instant: true }));
 }
 window.CampSwoop = { watchFromMap, showTab };
 

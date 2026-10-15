@@ -6,10 +6,12 @@ email, and Google won't verify another account with the owner's phone, so the de
 
 - `docs/` (GitHub Pages) is the site. `index.html` + `assets/site.css`, `app.js` (tabs, hero, sign-up)
   and `map.js` (MapLibre 5.24 globe, loaded on the Map tab). The sign-up posts to the Worker.
-- Look: warm black `#0b0a09`, ember `#ff4a1c` as the only accent, Archivo (display at font-stretch 125%,
-  uppercase; body 100%), hairline rules, 2 px radii. Keep to this; no extra hues, no rounded cards.
-  Motion: 0.9 s `cubic-bezier(.16,1,.3,1)` reveals, one signature moment per view, everything collapses
-  under `prefers-reduced-motion`.
+- Look: warm black `#0b0a09`, ember `#ff4a1c` as the only accent. Noto Serif Display for headlines (title
+  case, two lines at most), Archivo for text, buttons and big figures (wide caps), Chivo Mono for short
+  labels only; hairline rules, 2 px radii. Keep to this; no extra hues, no rounded cards, no glows.
+  Motion tokens are in site.css (`--ease` for entrances, `--ease-out` for presses, `--ease-drawer` for the
+  phone sheet); UI changes stay under 300 ms, hover lives only under `(hover: hover) and (pointer: fine)`,
+  and everything goes still under `prefers-reduced-motion`. The hero loops are graded in the files.
 - The map: OpenFreeMap "dark" style restyled in `restyle()`, globe projection, clusters from
   `docs/data/campgrounds.json` (built by `tools/build_map_data.py`; refs map to booking links in
   `bookingLink()`), OpenStreetMap campsites straight from the vector tiles (poi class `campsite`, only
@@ -29,5 +31,9 @@ email, and Google won't verify another account with the owner's phone, so the de
   and drives the sign-up with a mocked API; its README has the commands. Python 3.12 and Node are
   installed.
 - Review agents live in the parent folder's `.claude/agents/` (gis-mapping, web-design-critic,
-  motion-reviewer) and GIS MCP servers in the parent's `.mcp.json`.
+  motion-reviewer), design skills in its `.claude/skills/` (impeccable, taste-skill, redesign-skill and
+  Emil Kowalski's animation and mobile-native skills; don't run impeccable's downloader CLI), and GIS MCP
+  servers in its `.mcp.json`.
+- The emails (alerts.py and the Worker's `emailHtml`) and the Worker's pages share the site's look; the
+  alert preview clip (`docs/assets/alert.mp4`, made with vidIQ motion graphics) shows the real alert email.
 - Before sending anything to subscribers as a whole, show the user exactly what will be sent.

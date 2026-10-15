@@ -34,10 +34,13 @@ Campspot. Booking sites people paste that aren't supported are counted in the `r
 GitHub's own schedule fires unreliably, so each Actions run checks 12 times, 5 minutes apart, then starts
 the next run itself.
 
-The site's look: warm black, one ember accent, Archivo type, hairline rules. The hero plays a day or night
-campsite loop depending on the visitor's local hour (`docs/assets/hero-day.mp4`, `hero-night.mp4`, from
-Mixkit's free license), and the sign-up section previews an alert with a short motion-graphics clip
-(`docs/assets/alert.mp4`). Everything respects `prefers-reduced-motion`.
+The site's look: warm black, one ember accent, a serif for headlines (Noto Serif Display), Archivo for text
+and big figures, Chivo Mono for labels, hairline rules. The hero plays a day or night campsite loop
+depending on the visitor's local hour (`docs/assets/hero-day.mp4`, `hero-night.mp4`, from Mixkit's free
+license, re-cut at their native frame rates), and the sign-up section previews the real alert email with a
+short motion-graphics clip (`docs/assets/alert.mp4`). The alert and confirm emails and the confirm, stop
+and manage pages use the same look. Everything respects `prefers-reduced-motion`, and phones get a
+draggable map sheet, safe-area padding for the installed app, and no sticky hover.
 
 Limits: 3 watches per person, 50 active in total, stays up to 14 nights up to about a year ahead,
 10 sign-ups per hour from one internet address, 6 alerts per watch per day, and 90 emails a day overall
@@ -74,7 +77,7 @@ npx wrangler d1 execute campswoop --remote --command "SELECT * FROM requested_si
 4. **Checker:** make a long random token and store it twice: `npx wrangler secret put API_TOKEN` (Worker) and
    `gh secret set CAMPSWOOP_API_TOKEN -R host-user-mammoth/campswoop` (GitHub). Then
    `gh workflow run check.yml -R host-user-mammoth/campswoop`.
-5. **Replies (optional):** Cloudflare Email Routing can forward alerts@campswoop.com to any inbox you read.
+5. **Replies (optional):** Cloudflare Email Routing can forward `alerts@campswoop.com` to any inbox you read.
 
 To test the Worker locally, put `RESEND_API_KEY=log` and an `API_TOKEN` in `worker/.dev.vars` (emails are
 printed instead of sent), run `npx wrangler d1 execute campswoop --local --file schema.sql` and
