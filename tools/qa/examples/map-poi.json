@@ -1,0 +1,11 @@
+{"steps": [
+  ["waitFor", "#map canvas"],
+  ["wait", 12000],
+  ["evaluate", "CampSwoopMap.map.jumpTo({ center: [-119.565, 37.738], zoom: 12.2 }); 'z12'"],
+  ["wait", 12000],
+  ["evaluate", "JSON.stringify({ zoom: 12.2, campsites: CampSwoopMap.map.queryRenderedFeatures({ layers: ['osm-campsites'] }).length, poiClasses: [...new Set(CampSwoopMap.map.querySourceFeatures('openmaptiles', { sourceLayer: 'poi' }).map(f => f.properties.class))].slice(0, 30) })"],
+  ["evaluate", "CampSwoopMap.map.jumpTo({ center: [-119.565, 37.738], zoom: 14.2 }); 'z14'"],
+  ["wait", 14000],
+  ["evaluate", "JSON.stringify({ zoom: 14.2, campsites: CampSwoopMap.map.queryRenderedFeatures({ layers: ['osm-campsites'] }).map(f => f.properties.name), classes: [...new Set(CampSwoopMap.map.querySourceFeatures('openmaptiles', { sourceLayer: 'poi' }).map(f => f.properties.class))].slice(0, 40) })"],
+  ["screenshot", "z14"]
+]}

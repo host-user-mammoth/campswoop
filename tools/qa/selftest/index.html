@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QA rig self-test</title>
+<link rel="icon" href="data:,">
+<!-- Checks the rig itself: node shoot.js --root selftest --out out/selftest --name selftest --wait-for "#ready" --full-page --scroll
+     Expect a shader-drawn colour field with a white disc, an mp4 frame, "revealed: 3/3" in the status panel
+     (0/3 without --scroll), three "Fades in on scroll" boxes near the bottom of the full-page shot, and "ready" last.
+     Hash #errors adds a deliberate console error, a 404 and an uncaught exception, to check the log.
+     clip.mp4 is a 3 s H.264 clip recorded from a canvas with MediaRecorder in this Chromium.
+     This page never calls the CampSwoop API, so it is safe with or without --mock-api. -->
+<style>
+  :root { --bg: #f4f1ea; --text: #1b241d; --panel: #ffffff; --muted: #5b6b5e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121714; --text: #e4ebe5; --panel: #1c241e; --muted: #9fb0a2; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px; display: grid; gap: 16px; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  .media { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .media { grid-template-columns: 1fr; } }
+  canvas, video { width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 12px; background: #000; }
+  .panel { background: var(--panel); border-radius: 12px; padding: 12px 16px; margin: 0; list-style: none; }
+  .panel li { font: 14px/1.6 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+  .panel b { color: var(--muted); font-weight: 400; }
+  .spin { display: inline-block; animation: spin 1.5s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  .tall { height: 1400px; border-radius: 12px; padding: 16px; background: linear-gradient(var(--panel), var(--bg)); display: flex; align-items: flex-end; }
+  .reveal { padding: 24px 16px; border-radius: 12px; background: var(--panel); font-weight: 600;
+            opacity: 0; transform: translateY(24px); transition: opacity 300ms, transform 300ms; }
+  .reveal.in { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>QA rig self-test <span class="spin">&#9680;</span></h1>
+  <div class="media">
+    <canvas id="gl" width="640" height="360" aria-label="WebGL test"></canvas>
+    <video id="video" src="clip.mp4" muted autoplay loop playsinline></video>
+  </div>
+  <ul class="panel" id="status"></ul>
+  <div class="tall">Bottom of the page: only in --full-page shots.</div>
+  <section class="reveal" id="reveal-1">Fades in on scroll (1 of 3). Blank here means the page was not scrolled before the capture.</section>
+  <section class="reveal" id="reveal-2">Fades in on scroll (2 of 3).</section>
+  <section class="reveal" id="reveal-3">Fades in on scroll (3 of 3).</section>
+</main>
+<script>
+const status = document.getElementById('status');
+const row = (key, value) => {
+  let li = document.getElementById('s-' + key);
+  if (!li) { li = document.createElement('li'); li.id = 's-' + key; status.append(li); }
+  li.innerHTML = `<b>${key}:</b> `;
+  li.append(String(value));
+};
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+row('hash', location.hash || '(none)');
+row('scheme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+row('reduced motion', reduced);
+row('viewport', `${innerWidth}x${innerHeight} @${devicePixelRatio}x, coarse pointer ${matchMedia('(pointer: coarse)').matches}`);
+
+const done = { gl: false, video: false };
+const check = () => {
+  if (done.gl && done.video && !document.getElementById('ready')) {
+    const p = document.createElement('p'); p.id = 'ready'; p.textContent = 'ready'; document.querySelector('main').append(p);
+  }
+};
+
+// WebGL2: animated colour field with a centred white disc (one static frame when reduced motion).
+(function webgl() {
+  const canvas = document.getElementById('gl');
+  const gl = canvas.getContext('webgl2');
+  if (!gl) { row('webgl', 'NOT AVAILABLE'); done.gl = true; return check(); }
+  const info = gl.getExtension('WEBGL_debug_renderer_info');
+  row('webgl', info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  const compile = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, `#version 300 es
+    in vec2 p; out vec2 uv; void main() { uv = p * 0.5 + 0.5; gl_Position = vec4(p, 0.0, 1.0); }`));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, `#version 300 es
+    precision highp float; in vec2 uv; uniform float t; out vec4 color;
+    void main() {
+      vec3 c = 0.5 + 0.5 * cos(t + uv.xyx * 3.0 + vec3(0.0, 2.0, 4.0));
+      float d = length((uv - 0.5) * vec2(16.0 / 9.0, 1.0));
+      color = vec4(mix(vec3(1.0), c, smoothstep(0.18, 0.2, d)), 1.0);
+    }`));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+  const t = gl.getUniformLocation(prog, 't');
+  const frame = now => {
+    gl.uniform1f(t, now / 1000);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (!done.gl) { done.gl = true; check(); }
+    if (!reduced) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})();
+
+// mp4 served by serve.js with Range requests.
+const video = document.getElementById('video');
+const videoRow = () => row('video', `readyState ${video.readyState}, ${video.videoWidth}x${video.videoHeight}, t=${video.currentTime.toFixed(2)}s${video.error ? ', error ' + video.error.code : ''}`);
+video.addEventListener('timeupdate', () => { videoRow(); if (video.currentTime > 0.5 && !done.video) { done.video = true; check(); } });
+video.addEventListener('error', () => { videoRow(); done.video = true; check(); });
+videoRow();
+
+// Sections that fade in when scrolled to, as on the redesigned site: --scroll / {"scroll": "through"} reveals them.
+const reveals = document.querySelectorAll('.reveal');
+let revealed = 0;
+row('revealed', `0/${reveals.length} (scroll to reveal)`);
+const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+  if (!entry.isIntersecting) return;
+  entry.target.classList.add('in');
+  observer.unobserve(entry.target);
+  row('revealed', `${++revealed}/${reveals.length}`);
+}), { threshold: 0.2 });
+reveals.forEach(el => observer.observe(el));
+
+if (location.hash === '#errors') {
+  console.error('selftest: deliberate console error');
+  const img = new Image(); img.src = 'missing.png'; document.body.append(img);
+  setTimeout(() => { throw new Error('selftest: deliberate uncaught error'); }, 0);
+}
+</script>
+</body>
+</html>

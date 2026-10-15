@@ -1,0 +1,16 @@
+{"steps": [
+  ["waitFor", "#q"],
+  ["wait", 2500],
+  ["screenshot", "hero"],
+  ["evaluate", "(async () => { const pause = ms => new Promise(r => setTimeout(r, ms)); const step = Math.round(innerHeight * 0.8); const max = () => document.documentElement.scrollHeight - innerHeight; for (let y = 0; y <= max(); y += step) { scrollTo(0, y); await pause(160); } scrollTo(0, max()); await pause(400); scrollTo(0, 0); await pause(700); return 'scrolled ' + document.documentElement.scrollHeight; })()"],
+  {"screenshot": "full", "fullPage": true},
+  ["evaluate", "document.querySelector('#configure').scrollIntoView(); 'ok'"],
+  ["wait", 600],
+  ["screenshot", "configure"],
+  ["evaluate", "document.querySelector('.teaser').scrollIntoView(); 'ok'"],
+  ["wait", 600],
+  ["screenshot", "teaser"],
+  ["evaluate", "document.querySelector('.faq').scrollIntoView(); 'ok'"],
+  ["wait", 600],
+  ["screenshot", "faq"]
+]}

@@ -1,0 +1,13 @@
+{"steps": [
+  ["waitFor", "#map canvas"],
+  ["wait", 15000],
+  ["click", "#sheet-handle"],
+  ["wait", 400],
+  ["click", "#map-list button"],
+  ["wait", 9000],
+  ["screenshot", "popup"],
+  ["evaluate", "CampSwoopMap.map.jumpTo({ center: [-119.565, 37.738], zoom: 14.2, padding: 0 }); document.querySelector('.maplibregl-popup-close-button')?.click(); document.querySelector('#map-detail .back')?.click(); 'zoomed'"],
+  ["wait", 14000],
+  ["screenshot", "zoomed"],
+  ["evaluate", "JSON.stringify({ osm: CampSwoopMap.map.queryRenderedFeatures({ layers: ['osm-campsites'] }).length, labels: CampSwoopMap.map.queryRenderedFeatures({ layers: ['watch-labels'] }).length, hint: document.querySelector('#osm-hint').textContent })"]
+]}

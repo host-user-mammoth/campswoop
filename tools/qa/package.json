@@ -1,0 +1,15 @@
+{
+  "name": "qa",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Screenshot and interaction rig for static sites: headless Chromium with software WebGL, run against a local static server.",
+  "scripts": {
+    "install-browsers": "node -e \"process.env.PLAYWRIGHT_BROWSERS_PATH=require('path').resolve('browsers');require('child_process').execSync('npx playwright install chromium',{stdio:'inherit'})\"",
+    "selftest": "node shoot.js --root selftest --out out/selftest --name selftest --hash webgl,errors --wait-for \"#ready\" --full-page --scroll"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "1.63.0"
+  }
+}

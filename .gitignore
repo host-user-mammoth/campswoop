@@ -3,3 +3,6 @@ __pycache__/
 worker/node_modules/
 worker/.wrangler/
 worker/.dev.vars
+tools/qa/node_modules/
+tools/qa/browsers/
+tools/qa/out/

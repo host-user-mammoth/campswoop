@@ -1,0 +1,83 @@
+{
+  "description": "Sign-up happy path on the redesigned CampSwoop page (mock API). Dates are set 30 nights out so the file never goes stale.",
+  "steps": [
+    [
+      "waitFor",
+      "#q"
+    ],
+    [
+      "fill",
+      "#q",
+      "https://app.fireflyreservations.com/reserve/property/NCStateFairCampground"
+    ],
+    [
+      "waitFor",
+      "#chosen"
+    ],
+    [
+      "assert",
+      "document.querySelector('#chosen-name').textContent.includes('Fair Campground')",
+      "the campground should be named from the Firefly link"
+    ],
+    [
+      "evaluate",
+      "(() => { const d = new Date(Date.now() + 30 * 864e5); const v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); const el = document.querySelector('#in'); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); return v; })()"
+    ],
+    [
+      "click",
+      "text=Trailer"
+    ],
+    [
+      "fill",
+      "#length",
+      "25"
+    ],
+    [
+      "fill",
+      "#email",
+      "you@example.com"
+    ],
+    [
+      "assert",
+      "!document.querySelector('#signup-button').disabled",
+      "Start watching should be enabled once campground, dates and email are filled"
+    ],
+    [
+      "evaluate",
+      "document.querySelector('.summary-list').innerText"
+    ],
+    [
+      "evaluate",
+      "document.querySelector('#configure').scrollIntoView(); 'scrolled'"
+    ],
+    [
+      "wait",
+      1500
+    ],
+    [
+      "screenshot",
+      "filled"
+    ],
+    [
+      "click",
+      "#signup-button"
+    ],
+    [
+      "waitFor",
+      "#result:not([hidden])"
+    ],
+    [
+      "assert",
+      "document.querySelector('#result').classList.contains('ok')",
+      "the mocked API should produce the success message"
+    ],
+    [
+      "evaluate",
+      "document.querySelector('#result').textContent"
+    ],
+    [
+      "screenshot",
+      "done"
+    ]
+  ]
+}

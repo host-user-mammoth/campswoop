@@ -1,0 +1,14 @@
+{"steps": [
+  ["waitFor", "#map canvas"],
+  ["wait", 15000],
+  ["screenshot", "globe"],
+  ["click", "#sheet-handle"],
+  ["wait", 400],
+  ["screenshot", "sheet"],
+  ["click", "#map-list button"],
+  ["wait", 9000],
+  ["screenshot", "popup"],
+  ["evaluate", "CampSwoopMap.map.jumpTo({ center: [-119.56, 37.74], zoom: 11.6 }); 'zoomed'"],
+  ["wait", 14000],
+  ["screenshot", "zoomed"]
+]}

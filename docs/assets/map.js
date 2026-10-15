@@ -179,7 +179,7 @@ function addLayers() {
     paint: { "circle-color": EMBER, "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3.5, 9, 6, 14, 8],
              "circle-stroke-width": 1.5, "circle-stroke-color": "#0b0a09" } });
   map.addLayer({ id: "watch-labels", type: "symbol", source: "watch", filter: ["!", ["has", "point_count"]], minzoom: 8,
-    layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-offset": [0, 1], "text-anchor": "top",
+    layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-offset": [0, 1.25], "text-anchor": "top",
               "text-max-width": 9, "text-optional": true },
     paint: { "text-color": "#e8dfd2", "text-halo-color": "#0b0a09", "text-halo-width": 1.4 } });
 
